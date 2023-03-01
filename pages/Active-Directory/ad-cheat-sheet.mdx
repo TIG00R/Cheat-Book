@@ -1,31 +1,44 @@
+import { Tab, Tabs } from 'nextra-theme-docs'
+ 
+
 ## Enumeration
 
 #### Domain Enumeration
+<Tabs items={['PowerView', 'ADModule']}>
+  <Tab>
+    ```powershell filename="PowerView"
+        # Get info about the domain
+        Get-NetDomain
 
-```powershell filename="ADModule"
-# Get info about the domain 
-Get-ADDomain
+        # Get info about other domain (if there is a trust relationship between the 2 domains)
+        Get-NetDomain -Domain domain2.local 
 
-# Get info about other domain (if there is a trust relationship between the 2 domains)
-Get-ADDomain -Identity domain2.local
+        # List Domain Controllers for another domain
+        Get-NetDomainController -domain domain2.local
+    ```
+  </Tab>
+  <Tab>
+    ```powershell filename="ADModule"
+        # Get info about the domain 
+        Get-ADDomain
 
-# List Domain Controllers
-Get-ADDomainController
+        # Get info about other domain (if there is a trust relationship between the 2 domains)
+        Get-ADDomain -Identity domain2.local
 
-# List Domain Controllers for another domain
-Get-ADDomainController -Identity domain2.local
-```
+        # List Domain Controllers
+        Get-ADDomainController
 
-```powershell filename="PowerView"
-# Get info about the domain
-Get-NetDomain
+        # List Domain Controllers for another domain
+        Get-ADDomainController -Identity domain2.local
+    ```
+  </Tab>
 
-# Get info about other domain (if there is a trust relationship between the 2 domains)
-Get-NetDomain -Domain domain2.local 
+ 
+</Tabs>
 
-# List Domain Controllers for another domain
-Get-NetDomainController -domain domain2.local
-```
+
+
+
 
 #### Domain Policy Enumeration
 ```powershell filename="ADModule"
