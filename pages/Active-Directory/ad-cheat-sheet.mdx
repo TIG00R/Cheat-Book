@@ -1,0 +1,183 @@
+## Enumeration
+
+#### Domain Enumeration
+
+```powershell filename="ADModule"
+# Get info about the domain 
+Get-ADDomain
+
+# Get info about other domain (if there is a trust relationship between the 2 domains)
+Get-ADDomain -Identity domain2.local
+
+# List Domain Controllers
+Get-ADDomainController
+
+# List Domain Controllers for another domain
+Get-ADDomainController -Identity domain2.local
+```
+
+```powershell filename="PowerView"
+# Get info about the domain
+Get-NetDomain
+
+# Get info about other domain (if there is a trust relationship between the 2 domains)
+Get-NetDomain -Domain domain2.local 
+
+# List Domain Controllers for another domain
+Get-NetDomainController -domain domain2.local
+```
+
+#### Domain Policy Enumeration
+```powershell filename="ADModule"
+Get-DomainPolicy
+
+# Get domain policy for system access
+(Get-DomainPlicy)."system access"  
+(Get-DomainPlicy)."kerberos policy"
+```
+
+#### User Enumeration
+```powershell filename="PowerView"
+# Get info about a specific user
+Get-Netuser -username user1
+
+# To select a specific property
+Get-NetUser | select samaccoutname
+
+
+# The properties are usesful in defend and detection, or in redteaming to know decoy users and honey credentials used to decieve attackers
+
+# Get all properties for all domain users
+Get-UserProperty
+
+# Shows password last set time
+Get-UserProperty -Properties pwdlastset
+
+# Number of bad password entries
+Get-UserProperty -Properties badpwdcount
+
+Get-UserProperty -Properties logoncount
+
+# The Description propertiy sometimes contains cleartext creds, so make sure to have a look on it  
+Get-UserField -SearchField Description -SearchTerm "built"
+
+# Get group membership of a user
+get-NetGroup -Username 'user'
+```
+
+```powershell filename="ADModule"
+# Get info about current user
+Get-ADUser -Filter * -Properties *
+
+# For a specific user
+Get-ADUser -Identity username -Properties *
+
+# Get Description property
+Get-ADUser -Filter 'Description like "*built*"' -Properties Description | select name, Description
+
+# Get group membership of a user
+Get-ADPrincipalGroupMembership -Identity username
+```
+
+#### User Hunting
+```powershell filename="Using  PowerView"
+# Get active logged-on users on a computer (Note: must have Local Admin privs on that machine)
+Get-NetLoggedOn -ComputerName computer_name
+
+# Get locally logged-on users on a computer (Note: must be local admins, and remote registery must  be runnong on the target [remote registry is started by default])
+Get-LoggedOnLocal -Computername computer_name 
+```
+
+#### Domain Group Enumeration
+
+```powershell filename="PowerView"
+Get-NetGroup  
+Get-NetGroup -domain other_domain  
+Get-NetGroup -Fulldata
+
+# Select only groups with 'admin' in its name 
+Get-NetGroup *admin*  
+Get-NetGroup -gropuname *admin*
+
+# Get data bout specific group
+Get-NetGroup 'group_name' -Fulldata 
+
+# Will show more groups like: **Schecma-Admins, Enterprise-Admins** which are only available on the forest root domain
+Get-NetGroup -domain forest_root_domain
+
+# Get group members
+Get-NetGroupMember -Groupname 'Domain Admins'
+
+# somtimes, groups have other groups as group members, we can specify -Recurse to recursively enumerate all gorups and their subgroups
+Get-NetGroupMember -Groupname 'Domain Admins' -Recurse
+```
+
+
+```powershell filename="ADModule"
+Get-ADGroup -Filter * | select Name  
+Get-ADGroup -Filter * -Properties *  
+Get-ADGroup -Filter 'Name -like "*admin*"' | select Name
+```
+
+#### Local Group Enumeration
+```powershell filename="PowerView"
+Get-NetLocalGroup -Computername computername -ListGroups  
+Get-NetLocalGroup -Computername computername -Recurse
+```
+
+#### Computer  Enumeration
+```powershell filename="PowerView"
+# These commands show only computer domain objects, not the actual machines
+Get-NetLocalGroup -Computername computername -ListGroups  
+Get-NetLocalGroup -Computername computername -Recurse
+
+# Search for  computers running specific OS
+Get-NetComputer -OperatingSystem "*Server 2016"  
+Get-NetComputer | select operatingsystem  
+
+# Check if the machine is live
+Get-DomainComputer -Ping 
+```
+
+```powershell filename="ADModule"
+Get-ADComputer -Filter 'Operating System like"*Server 2016*"' - Properties OperatingSystem | select Name, Operatingsystem  
+Get-ADComputer -Filter * -Properties DNSHostName | %{Test-Connection -Count 1 -ComputerName $_.DNSHostName}
+```
+
+#### Shares Enumeration
+```powershell file-path="PowerView"
+# Find all shares in the domain
+Invoke-ShareFinder -Verbose  
+  
+# we can execlude some default shares  
+Invoke-ShareFinder -Verbose -ExcludeStandard -ExecludePrint -ExecludeIPC
+
+# Find sensetive files on computers in domain
+Invoke-FileFinder -Verbose   
+
+# Get all file servers in the domain
+Invoke-NetFileServer
+```
+
+#### GPO Enumeration
+```powershell filename="gpresult-tool"
+# Get all group policies applied to current user or computer
+gpresult /r
+```
+
+```powershell filename="PowerView"
+Get-NetGPO  
+Get-NetGPO -ComputerName computer.domain  
+
+# If a user is made a part of a local group on computer using group policy, then we can enumerate those users using  
+Find-GPOComputerAdmin -ComputerName comptuer.domain  
+  
+# Find computers on which user is made a part of a group using group policy  
+Find-GPOLocation -Username user -Verbose  
+  
+# As we know , GPO's are applied on user or computer OU's , so, we can enumearte GPO's  
+Get-NetOU -OUName 'studentmachines'  
+  
+# List computers in this OU  
+Get-NetOU -OUName 'studentmachines' | %{Get-NetComputer -ADSpath $_}
+```
