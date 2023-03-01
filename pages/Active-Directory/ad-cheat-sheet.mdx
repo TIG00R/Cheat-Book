@@ -55,7 +55,7 @@ Get-DomainPolicy
 Get-Netuser -username user1
 
 # To select a specific property
-Get-NetUser | select samaccoutname
+Get-NetUser | select -ExpandProperty samaccoutname
 
 
 # The properties are usesful in defend and detection, or in redteaming to know decoy users and honey credentials used to decieve attackers
@@ -170,6 +170,29 @@ Invoke-FileFinder -Verbose
 
 # Get all file servers in the domain
 Invoke-NetFileServer
+
+# Find network shares and fileservers
+Find-DomainShare
+Get-DomainFileServer
+```
+
+```powershell
+# List shares on the local host
+net share
+wmic share get /format:list
+
+# List network computers
+net view
+
+# List shares on a remote PC
+net view COMPUTER_NAME /all
+wmic /node: COMPUTER_NAME share get
+
+# List all domain computers and filter all computers with “FILE” in their name
+net group "Domain Computers" /domain | findstr "FILE"
+
+
+
 ```
 
 #### GPO Enumeration
@@ -194,3 +217,81 @@ Get-NetOU -OUName 'studentmachines'
 # List computers in this OU  
 Get-NetOU -OUName 'studentmachines' | %{Get-NetComputer -ADSpath $_}
 ```
+
+#### Session  Enumeration
+```powershell filename="PowerView"
+# Get actively logged users on a computer (needs local admin rights on the target)
+Get-NetLoggedon -ComputerName <serverName>
+Get-NetSession  -ComputerName <ops-dc>
+
+# Get locally logged users on a remote computer (needs remote registry on the target - started by-default on server OS)
+Get-LoggedonLocal -ComputerName <serverName>
+
+# Get the last logged user on a computer (needs administrative rights and remote registry on the target)
+Get-LastLoggedOn -ComputerName <servername>
+
+#Find where a specific user is logged in using Powerview:
+Find-DomainUserLocation -UserIdentity USER_NAME
+
+#Find where a group of users are logged in using Powerview:
+Find-DomainUserLocation -UserGroupIdentity GROUP_NAME
+```
+
+#### Administrative Access
+```powershell filename="PowerView"
+# Find all machines on the current domain where the current user has local admin access
+Find-LocalAdminAccess -Verbose
+Get-NetComputer + Invoke-CheckLocalAdminAccess
+
+# Find local admins on all machines of the domain
+Invoke-EnumerateLocalAdmin -Verbose
+
+#Find computers where a domain admin (or specified user/group) has sessions
+Invoke-UserHunter
+Invoke-UserHunter -GroupName "RDPUsers"
+Invoke-UserHunter -CheckAccess
+#It will only search for active users inside high traffic servers (DC, File Servers and Distributed File servers)
+Invoke-UserHunter -Stealth
+```
+
+```powershell 
+. .\Find-PSRemotingLocalAdminAccess.ps1  # [[deprecated but still can be found online]]
+Find-PSRemotingLocalAdminAccess
+
+
+# If RPC and SMB are blocked check with WMI
+. .\Find-WMILocalAdminAccess.ps1
+```
+
+
+#### Local File Searching
+```
+
+```
+
+#### Local Privelege Escalation
+```
+
+```
+
+#### Forest Enumeration
+```
+
+```
+
+
+## Microsoft Services Enumeration and Attacking
+
+#### Microsoft Local Administrator Password Solution (LAPS)
+```
+
+```
+
+#### MSSQL Enumeration
+```
+```
+
+#### Microsoft Exchange and Outlook Web App
+```
+```
+
