@@ -1,35 +1,46 @@
 import { Tab, Tabs } from 'nextra-theme-docs'
  
+## Scan for vulnerabilities
+```bash
+# Zerologon
+crackmapexec smb <ip> -u '' -p '' -M zerologo
 
+# PetitPotam
+crackmapexec smb <ip> -u '' -p '' -M petitpotam
+
+# noPAC
+# This one needs domain creds
+crackmapexec smb <ip> -u 'user' -p 'pass' -M nopac
+```
 ## Enumeration
 
 #### Domain Enumeration
 <Tabs items={['PowerView', 'ADModule']}>
   <Tab>
-    ```powershell filename="PowerView"
-        # Get info about the domain
-        Get-NetDomain
+    ```powershell "
+      # Get info about the domain
+      Get-NetDomain
 
-        # Get info about other domain (if there is a trust relationship between the 2 domains)
-        Get-NetDomain -Domain domain2.local 
+      # Get info about other domain (if there is a trust relationship between the 2 domains)
+      Get-NetDomain -Domain domain2.local 
 
-        # List Domain Controllers for another domain
-        Get-NetDomainController -domain domain2.local
+      # List Domain Controllers for another domain
+      Get-NetDomainController -domain domain2.local
     ```
   </Tab>
   <Tab>
-    ```powershell filename="ADModule"
-        # Get info about the domain 
-        Get-ADDomain
+    ```powershell "
+      # Get info about the domain 
+      Get-ADDomain
 
-        # Get info about other domain (if there is a trust relationship between the 2 domains)
-        Get-ADDomain -Identity domain2.local
+      # Get info about other domain (if there is a trust relationship between the 2 domains)
+      Get-ADDomain -Identity domain2.local
 
-        # List Domain Controllers
-        Get-ADDomainController
+      # List Domain Controllers
+      Get-ADDomainController
 
-        # List Domain Controllers for another domain
-        Get-ADDomainController -Identity domain2.local
+      # List Domain Controllers for another domain
+      Get-ADDomainController -Identity domain2.local
     ```
   </Tab>
 

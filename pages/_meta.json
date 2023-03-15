@@ -1,14 +1,7 @@
 {
-    "index": "Introduction",
-    "cheat-book": {
-      "title": "Cheat Book",
-      "type": "page",
-      "href": ""
+    "index": {
+      "title": "Cheat Book"
     },
-    "note-book": {
-        "title": "Note Book",
-        "type": "page"
-      },
     "blog": {
         "title": "Blog",
         "type": "page"

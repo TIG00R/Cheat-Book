@@ -1,0 +1,35 @@
+### Frida 
+
+```js
+//List processes
+frida-ps -U
+// Spawn application with Frida
+frida -U -f package_name --no-pause
+
+// Print all loaded classes
+Java.perform(function(){Java.enumerateLoadedClasses({"onMatch":function(className){ console.log(className) },"onComplete":function(){}})})
+
+```
+
+Attach to an instance method (not static) which needs and instance of the  class to be called from
+```js copy
+Java.perform(()=>{
+
+    // Create instance from the calss that contains the method we target
+    var pinClass = Java.use("infosecadventures.allsafe.challenges.PinBypass")
+    
+    // Change the body of the function we hook
+    pinClass.checkPin.implementation=function(){
+        for (var pin=0; pin< 9999; pin++){
+            if(this.checkPin(String(pin).padStart(4,0))){
+                console.log("\n[+] Pin is: " + pin)
+                return true
+            }
+        }
+    }
+    
+})
+```
+#### References
+- https://justahmed.github.io/android/Allsafe-Walkthrough-Part-1/#14-object-serialization
+- https://neo-geo2.gitbook.io/adventures-on-security/frida-scripting-guide/frida-scripting-guide
