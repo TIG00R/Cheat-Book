@@ -1,18 +1,18 @@
 {
-    "index": {
-      "title": "Cheat Book"
+  "index": {
+    "title": "Cheat Book"
+  },
+  "note-book": {
+      "title": "Note Book",
+      "type": "page",
+      "href":"https://note-book-tig00r.vercel.app"
     },
-    "note-book": {
-        "title": "Note Book",
-        "type": "page",
-        "href":"https://note-book-tig00r.vercel.app"
-      },
-    "blog": {
-        "title": "Blog",
-        "type": "page"
-      },
-    "about": {
-      "title": "About",
+  "blog": {
+      "title": "Blog",
       "type": "page"
-    }
+    },
+  "about": {
+    "title": "About",
+    "type": "page"
+  }
 }
