@@ -9,5 +9,9 @@ export default {
         <meta property="og:title" content="Hackers Cheat Book" />
         <meta property="og:description" content="A cheat book for fellow hackers to not waste their precious time <3" />
       </>
-    ),
+    ), useNextSeoProps() {
+      return {
+        titleTemplate: 'Cheat Book'
+      }
+    }
   }
