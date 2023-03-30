@@ -1,0 +1,10 @@
+### Web Tips and Tricks
+
+#### Brute-Force
+```bash filename=" "
+# Shows wfuzz encoder list
+wfuzz -e encoders
+
+# Encode payloads while bruteforcing
+wfuzz -z file,wordlist,encoder_name http://doamin/
+```
