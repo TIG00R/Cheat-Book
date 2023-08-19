@@ -1,0 +1,23 @@
+#### smbclient
+
+```bash copy filename="Bash"
+# Gain a shell
+smbclient -U administrator //ip/c$
+
+# Null authentication
+smbclient -N //ip/c$
+
+# List Shares
+smbclient -L //ip/c$
+
+# Transfer large files without getting `NT_STATUS_IO_TIMEOUT`
+# Use those 2 options inside the smbclient shell
+timeout 120
+iosize 16384
+
+# 1 liner download file
+smbclient -m SMB2  '//10.10.0.252/c$' -c 'timeout 120; iosize 16384; get \tools\cobaltstrike\cobaltstrike.exe' -U administrator
+
+# Disable prompts (asking for y)
+prompt off
+```

