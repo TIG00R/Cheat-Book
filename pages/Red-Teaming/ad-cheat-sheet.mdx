@@ -1,7 +1,7 @@
 import { Tab, Tabs } from 'nextra-theme-docs'
  
 ## Scan for vulnerabilities
-```bash filename="Crackmapexec"
+```bash filename="Bash >"
 # Zerologon
 crackmapexec smb <ip> -u '' -p '' -M zerologon
 
@@ -17,16 +17,41 @@ crackmapexec smb <ip> -u 'user' -p 'pass' -M nopac
 # Checking entire scope for PrintNightmare vulnerability (check for the spoolservice)
 cme smb ./scope.txt  -u 'username' -p 'P@ssw0rd'  -M spooler
 ```
-## Enumeration
 
-```powershell copy
-$passwd =ConvertTo-SecureString 'p@ssw0rd' -AsPlainText -Force
+## Domain Mapping
+- [**BloodHound**](https://bloodhound.readthedocs.io/en/latest/)
+  - [Installation](https://github.com/BloodHoundAD/BloodHound)
+  - **Ingestors**:
+    - [**SharpHound**](https://github.com/BloodHoundAD/SharpHound) the official ingestor for  **BloodHound**
+    - [**BloodHound.py**](https://github.com/dirkjanm/BloodHound.py) not all **SharpHound** features implemented, runs remotely
+    - [**RustHound**](https://github.com/OPENCYBER-FR/RustHound) not all SharpHound functions implemented, use it as a backup if **SharpHound** is detected by AV
+      - [SharpHound Options](https://bloodhound.readthedocs.io/en/latest/data-collection/sharphound-all-flags.html)
+      - 
+        ```powershell copy filename="Powershell >"
+        .\sharphound.exe --CollectionMethods All
+        ```
+    - [**SilentHound**](https://github.com/layer8secure/SilentHound)
+- [**BloodHoundCE**](https://github.com/SpecterOps/BloodHound)
+  - [Installation](https://github.com/SpecterOps/BloodHound)
+  - [**BloodHound-AD-Analysis**](https://github.com/8com/bloodhound-adAnalysis) analyze and export vulnerabilities using the new **BloodHound CE API**
+- [**AD Explorer**](https://docs.microsoft.com/en-us/sysinternals/downloads/adexplorer)
+- [**Group3r**](https://github.com/Group3r/Group3r) 
+  - Super useful for GPO analysis
+
+## Domain Vulnerability Assessment
+The following tools will provide some metrics and analysis for the Domain
+- [**Ping Castle**](https://www.pingcastle.com/documentation/)
+- [**AD Recon**](https://github.com/adrecon/ADRecon)
+
+#### Domain Enumeration
+Create credentials object to be used within non-joined domain machines
+```powershell copy filename="Powershell >"
+$passwd = ConvertTo-SecureString 'p@ssw0rd' -AsPlainText -Force
 $creds = New-Object System.Management.Automation.PSCredential ('username', $passwd)
 ```
-#### Domain Enumeration
 <Tabs items={['PowerView', 'ADModule']}>
   <Tab>
-    ```powershell filename="PowerView" 
+    ```powershell filename="Powershell >" copy
       # Get info about the domain
       Get-NetDomain
 
@@ -38,7 +63,7 @@ $creds = New-Object System.Management.Automation.PSCredential ('username', $pass
     ```
   </Tab>
   <Tab>
-    ```powershell filename="ADModule" 
+    ```powershell filename="Powershell >" copy 
       # Get info about the domain 
       Get-ADDomain
 
@@ -341,8 +366,10 @@ Find-PSRemotingLocalAdminAccess
 
 
 #### Forest Enumeration
-```
 
+```powershell copy filename="Powershell >"
+# run this from a domain-joined machine to list other domains in the same forest
+nltest.exe /domain_trusts
 ```
 
 ## Domain attacks
@@ -624,4 +651,5 @@ Get-GlobalAddressList -ExchHostname mail.domain.com -UserName domain\username -P
 
 
 ```
-
+## Useful Resources
+https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/

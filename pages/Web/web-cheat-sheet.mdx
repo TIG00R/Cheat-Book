@@ -1,0 +1,15 @@
+### Web Tips and Tricks
+
+#### Brute-Force
+```bash filename="Bash" copy
+# Shows wfuzz encoder list
+wfuzz -e encoders
+
+# Encode payloads while bruteforcing
+wfuzz -z file,wordlist,encoder_name http://doamin/
+
+# Subdomain Enumeration
+gobuster vhost --useragent "PENTEST" --wordlist "/path/to/wordlist.txt" --url $URL
+ffuf -H "Host: FUZZ.$DOMAIN" -H "User-Agent: PENTEST" -c -w "/path/to/wordlist.txt" -u $URL
+wfuzz -w subdomain-wordlist.txt -H "Host: FUZZ.forge.htb" --sc 200 $IP
+```
