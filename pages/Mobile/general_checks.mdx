@@ -1,0 +1,107 @@
+import { Tab, Tabs, Callout } from 'nextra-theme-docs'
+
+### Network:
+
+- Ensure that the app is using secure connections (TLS).
+- All platforms have some trusted CAs in their trust store, Apple has 200+. but the apps should restrict the trust even more to their own servers only through **Identity Pinning** which includes: (**Certificate Pinning** or **Public Key Pinning**). you can refer to [OWASP Certificate Pinning cheat sheet](https://cheatsheetseries.owasp.org/cheatsheets/Pinning_Cheat_Sheet.html)
+
+#### Verifying TLS settings for the server.
+- **Verify using the right protocols**:  **TLS v1.0** and **v1.1** are deprecated by most browsers since 2020. so, its recommended to not support them.
+- **Verify using the right cipher suits**:
+    - cipher suits terminology `Protocol_KeyExchangeAlgorithm_WITH_BlockCipher_IntegrityCheckAlgorithm`, ex `TLS_RSA_WITH_3DES_EDE_CBC_SHA`
+        - **TLS**: Protocol
+        - **RSA**: Key exchange algorithms
+        - **3DES_EDE_CBC**: Block cipher
+        - **SHA**: Integrity check algorithm
+    - testing cipher suits:
+        - `nscurl` on macOS
+        - `testssl.sh`
+#### Intercepting Traffic
+##### HTTP & HTTPS Traffic
+For HTTPs traffic we can:
+- Add burp certificate to the user trust store on the phone. then we'll be able to intercept the traffic
+- If there was pinning (certificate / public key) pinning, we'll have to do SSL Unpinning
+##### Non-HTTP Traffic
+We can intercept non-http traffic (TCP / UDP) using:
+- [Nope-Proxy](https://testssl.sh)
+- [Mitm Relay](https://github.com/jrmdev/mitm_relay)
+##### Intercepting traffic from the app process
+If the app implements a custom Network stack (Not using normal APIs). 
+https://hackmag.com/security/ssl-sniffing/
+##### Intercepting traffic on the network layer
+- Should be used when non proxy-aware frameworks are used (ex: **Xamarin**). or if the application just ignores it. Also when another protocol other than HTTP is being used (ex: **XMPP**), 
+- There are 3 ways to intercept **Xamarin** app traffic:
+
+    1. Add a proxy to the app in the `onCreate` or `Main()` method and recreate the app
+    ```java copy filename="Java"
+    WebRequest.DefaultWebProxy = new WebProxy("192.168.11.1", 8080);
+    ```
+    2. Add the burp proxy ip to `/etc/hosts` asif it was the application server. and:
+        - Redirect traffic from port `443` to burp port.
+        - Redirect the traffic out of burp to the actual server and port. 
+    we can use `iptables` for that
+    ```bash copy filename="Terminal"
+    sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j DNAT --to-destination 127.0.0.1:8080
+    ```
+    3. MITM attack using **Bettercap**
+- We can use **Wireshark** for monitoring traffic, also we can use **Bettercap** to perform a MITM if needed.
+- On a rooted or jailbroken device, we can setup a proxy using code injection tools (ex: [inspeckage](https://github.com/ac-pm/Inspeckage)) or full instrumentation frameworks like **Frida** and **Cycript**
+- On ios, we can use **RemoteVirtuaInterface**
+Note that starting with Android 7.0. (API level 24) the OS no longer trusts a user supplied CA certificate unless specified in the app.
+<Callout type="info" emoji="👻">
+**Note**:
+- Starting with Android 7.0. (API level 24) the OS no longer trusts a user supplied CA certificate unless specified in the app.
+- For IOS you can just install the user certificate and you'll be able to intercept the HTTPs traffic
+</Callout>
+### Cryptography
+- Identify Insecure and/or Deprecated Cryptographic Algorithms such as:
+    - DES
+    - 3DES
+    - RC2
+    - RC4
+    - BLOWFISH
+    - MD4
+    - MD5
+    - SHA1
+- Identify cryptographic misconfigurations such as:
+    - Insufficient key length
+    - Symetric encryption with hardcoded keys
+- Look at [MASTG](https://mas.owasp.org/MASTG/0x04g-Testing-Cryptography/#protecting-keys-in-storage-and-in-memory) for more cryptography misconfigurations
+### Code Quality
+#### Injection Attacks
+##### SQL Injection
+##### XML Injection
+- **XXE**:
+By using the following payload, we can cause a DOS on the application because the `/dev/random` will retrieve endless stream of bytes 
+    ```xml copy filename="XML"
+    <?xml version="1.0" encoding="ISO-8859-1"?>
+    <!DOCTYPE foo [
+    <!ELEMENT foo ANY >
+    <!ENTITY xxe SYSTEM "file:///dev/random" >]><foo>&xxe;</foo>
+    ```
+    <Callout type="info" emoji="👻">
+    Mobile apps can use XML not just for communicating with servers. XML payloads can also be parsed by local parsers like `NSXMLParser` on IOS 
+    </Callout>
+##### **XSS**
+- In the context of native apps, XSS risks are far less prevalent for the simple reason these kinds of applications do not rely
+on a web browser. However, apps using WebView components, such as **WKWebView** or the deprecated **UIWebView** on iOS
+and WebView on Android, are potentially vulnerable to such attacks.
+- If a WebView is used to display a remote website, the burden of escaping HTML shifts to the server side. If an XSS flaw
+exists on the web server, this can be used to execute script in the context of the WebView. As such, it is important to
+perform static analysis of the web application source code.
+- for more info [MASTG](https://mas.owasp.org/MASTG/0x04h-Testing-Code-Quality/#cross-site-scripting-flaws)
+- Examples of a vulnerable WebView 
+    - Java
+     ```java copy filename="Java"
+     webView.loadUrl("javascript:initialize(" + myNumber + ");");
+     ```
+    - Kotlin
+    ```kotlin copy filename="Kotlin"
+    webView.loadUrl("javascript:initialize($myNumber);")
+    ```
+##### **Vulnerable Libraries**
+    - When working with x509 formatted certificate data, ensure that secure parsers are used. For instance **Bouncy Castle below version 1.6 allows for Remote Code Execution by means of unsafe reflection**
+#### Memory corruption bugs
+[MASTG](https://mas.owasp.org/MASTG/0x04h-Testing-Code-Quality/#memory-corruption-bugs)
+### User Privacy Protection
+[MASTG](https://mas.owasp.org/MASTG/0x04i-Testing-User-Privacy-Protection/#references)

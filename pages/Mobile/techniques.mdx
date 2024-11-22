@@ -1,0 +1,297 @@
+### Accessing the Device Shell
+
+**Android**
+- `adb`
+    ```shell filename="Terminal" copy
+    adb shell
+    adb root # if working on emulator. next adb connect will be a root shell directly
+    adb -s emulator-5554 shell # -s for multiple devices
+    ```
+
+- `SSH` using [Termux](https://play.google.com/store/apps/details?id=com.termux&pli=1)  
+    - Can be used as an SSH server
+    - Can also be used as an on-device shell app
+    
+**iOS**
+- Using `SSH`
+    - The IOS device must be jailbroken in order to install `OpenSSH` on it 
+    - Using **Cydia** or **Sileo** we can to install `OpenSSH`
+    - We can change the defualt password `alpine` by editing it in the `/private/etc/master.password` file
+ 
+- `SSH` over TCP <br /> 
+Using [Usbmuxd](https://github.com/libimobiledevice/usbmuxd) which is a socket USB multiplixing daemon. it listens for new USB connections to iOS devices and maps these connections to localhost TCP ports
+```shell filename="Terminal" copy
+# usbtmuxd handles the connection multiplexing over the USB
+# iproxy leverages the usbmuxd multiplixing to create a tunnel between port 2222 on localhost to port 22 on mobile  
+brew install libimobiledevice
+iproxy 2222 22 
+ssh -p 2222 root@localhost
+```
+- On device shell (shell emulator) using [NewTerm2](https://chariz.com/get/newterm)
+
+### Host-Device data transfer
+
+**Android**
+- `adb`
+    ```bash filename="Terminal" copy
+    adb push # upload
+    adb pull # download
+    ```
+- `objection -g com.package.name explore` <br />
+Note: will only have access to the file that the app has access to
+    ```bash filename=Terminal" copy
+    ls # list files
+    file download # download files from device to hosts
+    file upload # upload files from host to device
+    ```
+
+**iOS**
+
+- `scp`
+    ```bash filename="Terminal" copy
+    scp -P 2222 root@localhost:/file/path . # copy file from device to host current directory
+    ```
+- `objection`
+    ```bash filename="Terminal" copy
+    # objection will inside the app bundle directory /var/containers/Bundle/Applications
+    file download 
+    file upload
+    env # view the directories of the app
+    ```
+- [Grapefruit](https://mas.owasp.org/MASTG/tools/ios/MASTG-TOOL-0061/)
+### Obtaining apps
+
+**Android**
+- [APKMirror](https://apkmirror.com/)
+- [APKPure](https://apkmirror.com/)
+- [gplaycli](https://mas.owasp.org/MASTG/tools/android/MASTG-TOOL-0016/)
+    ```bash filename="Terminal" copy
+    gplaycli -p -v -d com.google.android.keep
+    ```
+- Extracting from the device:
+    - `adb`
+        ```bash filename="Terminal" copy
+        adb path package_name # Get the path to the base.apk of the file
+        # then download it with adb pull
+        ```
+    - [APKExtractor](https://github.com/Domilopment/apk-extractor)
+
+**iOS**
+#### Downloading the ipa
+- `itms-services` which is an OTA (over-the-air) download way used for distributing the ipa files for testers
+  ```bash copy filename="Terminal"
+  # itms-services -u "itms-services://?action=download-manifest&url=https://s3-ap-southeast-1.amazonaws.com/test-uat/manifest.plist" -o - > out.ipa
+  ```
+#### Restoring ipa from the device
+- the .ipa when installed. it gets decompressed into a directory inside `/var/containers/Bundle/Applications/UUID/` and this directory`app_name.app` directory
+- This is the actual structure inside the `.ipa` file
+  ```bash copy filename=".ipa"
+  MyApp.ipa
+  └── Payload
+    └── MyApp.app
+        ├── MyApp
+        ├── Info.plist
+        ├── (other app resources)
+  ```
+- in order to restore the ctual `ipa` file. we can we can download the `MyApp.app` directory. put it inside a directory and name it `Payload` and zip this directory and rename it to `MyApp.ipa` and that's how we can get the actual `ipa` file that had been installed
+- notice that this ipa will be encrypted. (all ipa files are encrypted during transmission and rest on the device disk. they only get decrypted when being run) 
+  ```bash copy filename="Terminal"
+  zip -r MyApp.ipa Payload
+  ```
+#### Extracting the app binary 
+- The app binary is the **MachO** binary file within the ipa package. and is usualy encrypted.
+- Can be found in `/var/containers/Bundle/Applications/UUID/Application_Name.App/ApplicationName`
+#### Decryting the app binary
+  - we can check if the ipa is encrypted or not using:
+    - `otool`
+      ```bash copy filename="Terminal" showLineNumbers {7}
+      otool Twitter.App/Twitter # where Twitter is the MachO binary of the Twitter app
+      Load command 13
+            cmd LC_ENCRYPTION_INFO_64
+      cmdsize 24
+      cryptoff 16384
+      cryptsize 8962048
+      cryptid 1 # Notice cryptid=1 means this binary is encrypted 
+      ```
+    - `radar2`
+      ```bash copy filename="Terminal"
+      rabin2 -I Application.App/Application | grep -i crypto
+      # crypto can be a false or true . indicating the binary file is encrypted ot not
+      ```
+  - we can decrypt it using [frida-ios-dump](https://github.com/AloneMonkey/frida-ios-dump)
+#### Thinning the app binary
+ **Fat Binary**
+	- Is a file type that contains extra information to run on multiple architectures `arm_v7` (32) and `arm64` as example
+	- If you `file` or `lipo`  commands on this file. it will show you that its a binary with 2 architectures.
+		```bash copy filename="Terminal"
+		lipo -archs binary_name
+		```
+	- you can extract each of them separately (**Thinning the app**)
+		```bash copy filename="Terminal"
+		lipo -extract armv7 fat_binary_file -output binary_armv7
+		```
+### Patching Apps 
+Patching an app refers to injecting the frida-gadget.so into the app. and repackaging and resigning it again. in order to be able to test the app on a non-rooted or non-jailbroken device
+
+**Android**
+- `objection`
+```bash copy filename="Terminal"
+objection patchapk --source app.apk 
+```
+
+**iOS**
+- `objection`
+```bash copy fileaname="Terminal"
+objection patchipa --source my-app.ipa --codesign-signature 0C2E8200Dxxxx
+```
+the ipa then must be sideloaded into the ios device
+### Installing Apps
+
+**Android**
+- `adb`
+```bash terminal fileanme="Terminal"
+adb install app.apk
+```
+
+**iOS**
+- Trollstore
+- Sideloadly
+- AltServer
+- libimobiledevice
+  ```bash copy filename="Terminal"
+  ideviceinstaller -i app.ipa # install the app.ipa
+  ```
+- [ipainstaller](https://github.com/autopear/ipainstaller)
+  ```bash copy filename="Terminal"
+  ipainstaller App_name.ipa
+  ```
+- ios-deploy
+  ```bash copy filename="Terminal"
+  # You'll need to unzip your IPA since ios-deploy uses the app bundles to install apps
+  unzip Name.ipa
+  ios-deploy --bundle 'Payload/Name.app' -W -d -v
+  ```
+### Listing installed apps
+**Android**
+
+- `adb`
+  ```bash copy filename="Terminal"
+  adb shell pm list packages -3 -f
+  # -3 for listing only 3rd party apps
+  # -f for showing the app file path
+
+  adb shell pm path com.app.name # show app path on the device 
+  ```
+- `frida`
+  ```bash copy filename="Terminal"
+  frida-ps -Uai
+  ```
+
+**iOS**
+- `frida`
+  ```bash copy filename="Terminal"
+  frida-ps -Uai
+  ```
+- [Grapefruit](https://mas.owasp.org/MASTG/tools/ios/MASTG-TOOL-0061/)
+### Monitoring system logs
+
+**Android**
+- ` adb logcat`
+  ```bash copy filename="Terminal"
+  adb logcat | grep "$(adb shell ps | grep <package-name> | awk '{print $2}')"
+  adb logcat --pid process_id
+  ```
+
+**iOS**
+- **XCode**<br />
+Navigate to **Window**-> **Devices and Simulators** 
+- `socat`
+  ```bash copy filename="Terminal"
+  sudo apt install socat
+  socat - UNIX-CONNECT:/var/run/lockdown/syslog.sock
+  ```
+
+### Dumping keychain data
+- `objection` (jailbroken / non-jailbroken)
+  ```bash copy filename="Terminal"
+  ios keychain dump
+  ```
+- Grapefruit (jailbroken / non-jailbroken)
+- [keychain-dumper](https://mas.owasp.org/MASTG/tools/ios/MASTG-TOOL-0056/)
+  ```bash copy filename="Terminal"
+  iPhone:~ root# /tmp/keychain_dumper # from inside the iphone
+  ```
+
+### Setting up interception proxy
+**Android**
+- Look at [NSC](/Mobile/Related_Topics/Android/nsc)  
+  
+### SSL Pinning Bypasse
+- frida
+- objection
+- XPosed Framework: Install the [TrustMeAlready](https://github.com/ViRb3/TrustMeAlready) ↗ or [SSLUnpinning](https://github.com/ac-pm/SSLUnpinning_Xposed) ↗ module. have a look at [Using TrustMeAlready and SSLUnpinning2.0](https://www.youtube.com/watch?v=r8qWrLXHdV0)
+#### Bypass custom certificate pinning
+There are 3 ways for custom certificate pinning:
+- **Certificate Hashes**
+  ```bash filename="Terminal" copy
+  # search for the cert hashes to replace with burp cert hashes
+  grep -ri "sha256\|sha1" ./smali
+  ```
+- **Certificate Files** <br /> 
+  ```bash filename="Terminal" copy
+  # Search for certificate files to replace with our burp cert
+  find ./assets -type f \( -iname \*.cer -o -iname \*.crt \  
+  ```
+- **TrustStore files**
+  ```bash filename="Terminal" copy
+  # search for the truststores to add burp cert to them
+  find ./ -type f \( -iname \*.jks -o -iname \*.bks \
+  ```
+
+[Bypass BouncyCastle struststore steps](https://mas.owasp.org/MASTG/techniques/android/MASTG-TECH-0012/#bypass-custom-certificate-pinning-statically)
+
+#### iOS
+- objection
+- frida [ios10-ssl-bypass](https://codeshare.frida.re/@dki/ios10-ssl-bypass/)
+- SSLKillSwitch 3.0
+- [Other techniques in MASTG](https://mas.owasp.org/MASTG/techniques/ios/MASTG-TECH-0064/#when-the-automated-bypasses-fail)
+
+### Decompilation and Disassembly
+#### Android
+##### Decompiling Java Code
+- jadx
+- jadx-gui 
+- apktool
+- apkx
+- apklab
+
+##### Disassembling Native code
+- **JNI** (Java native interface): defines a way for java code to interact with native code written in c/c++ which are compiled in the form of `.so` files and get loaded during runtime with `System.load` method
+- [JavaJNI.APK challenge](./CTF/helloworldjni)
+
+#### iOS
+- Swift and ObjectiveC apps in iOS are both compiled to ARM assembly.
+- We should [objtain the decrypted **MachO** file first from the ipa file](#extracting-the-app-binary)  
+##### Disassembling Native Code
+- analyze the binary using IDAPro, Ghidra, ... etc
+##### Decompiling Native Code
+- Only Hopper is konwn that can do that 
+### Retrieving Strings
+#### Android
+##### From Dex
+- Ghidra --> Window -> Definded Strings
+- Dextra
+  ```bash copy filename="Terminal"
+  Dextra -S classes.dex
+  ```
+- Hopper
+##### From Native binaries
+- Ghidra
+- iaito (gui for radar2)
+- [Cutter](https://cutter.re) the official Rizin GUI
+- radar2
+  ```bash copy filename="Terminal"
+  rabin2 -zz file
+  ```
+- strings
+- Hopper

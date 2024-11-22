@@ -1,0 +1,84 @@
+import Image from 'next/image'
+
+### Decompilation
+Using `apkx` 
+    ```bash copy filename="Terminal"
+    apkx HelloWord-JNI.apk
+    ```
+### Java Code analysis
+- within this path of the decompiled code `/src/sg/vantagepoint/helloworldjni` we can see the `MainActivity.java` decompiled code.
+- Notice the `System.LoadLibrary()` which loads the native lib called `native-lib`
+    ```java copy filename="MainActivity.java" showLineNumbers {22}
+        /*
+    * Decompiled with CFR 0_121.
+    * 
+    * Could not load the following classes:
+    *  android.os.Bundle
+    *  android.view.View
+    *  android.widget.TextView
+    *  java.lang.CharSequence
+    *  java.lang.String
+    *  java.lang.System
+    */
+    package sg.vantagepoint.helloworldjni;
+
+    import android.os.Bundle;
+    import android.support.v7.app.AppCompatActivity;
+    import android.view.View;
+    import android.widget.TextView;
+
+    public class MainActivity
+    extends AppCompatActivity {
+        static {
+            System.loadLibrary((String)"native-lib");
+        }
+
+        @Override
+        protected void onCreate(Bundle bundle) {
+            super.onCreate(bundle);
+            this.setContentView(2130968603);
+            ((TextView)this.findViewById(2131427422)).setText((CharSequence)this.stringFromJNI());
+        }
+
+        public native String stringFromJNI();
+    }
+    ```
+- in the `lib/` directory we can find many `libnative-lib.so` files compiled for different architectures, and the loader will choose which one to use during the runtime
+    ![javajni-1](/images/javajni-1.png)
+- By also analysing the java code, we can notice that its trying to execute `stringFromJNI()` method, so we expect that the libnative-jni.lib will export a method with this name.
+- We can search for symbols in binary files using 
+    - readelf (linux)
+    - greadelf (macOS)
+        ```bash copy filename="Terminal"
+        greadelf -W -s libnative-lib.so | grep -i java
+        ```
+    - radar2
+        ```bash copy filename="Terminal"
+        rabin2 -s libnative-lib.so | grep -i java
+        ```
+    and here is the exported method
+    ![javajni-2](/images/javajni-2.png)
+
+### Natie Code Disassembly
+- radar2
+    ```bash copy filename="Terminal"
+    r2 -A libnative-lib.so 
+    # i --> information
+    # s --> symbols
+    # ~ --> grep 
+    is~Java 
+
+    # Display the disassembly of the method
+    e emu.str=true; # -->  enables radare2's string emulation. so we can see strings
+    s 0x00000e78 # --> seek to the address
+    af # --> analyse a function at the current address
+    pdf # --> prind disassembly of a function
+    ```
+    ![javajni-3.png](/images/javajni-3.png)
+
+    can be performed in a one liner
+    ```bash copy filename="Terminal"
+    r2 -qc 'e emu.str=true; s 0x00000e78; af; pdf' libnative-lib.so
+    ```
+- IDAPro
+- ghidra

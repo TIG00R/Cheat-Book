@@ -1,0 +1,36 @@
+- **NSC** or **Network Security Configuration** is a feature for android applications that allows the apps to control their network communications.
+- It allows the apps to:
+    - Enable or Disable the usage of clear text traffic
+    - SSL Pinning
+    - Specify **Custom trust anchors**: Customize which Certificate Authorities (CAs) are trusted for an app's secure connections.
+  - the path to `network_security_config` file can be spotted within AndroidManifest.xml file by looking for `android:network_Security_Config`
+    ```xml filename="AndroidManifest.xml"
+    <application android:networkSecurityConfig="@xml/network_security_config"
+    ```
+  - Within the network_security_config file, the trusted anchors can be specified using 3 flags as follows
+    ```xml
+      <certificates 
+        src=["system" | "user" | "raw resource"]
+        overridePins=["true" | "false"] 
+      />
+    ```
+    - Each certificate can be one of the following:
+      - `raw resource` is an ID pointing to a file containing X.509 certificates
+      - `system` for the pre-installed system CA certificates
+      - `user` for user-added CA certificates
+  - So, in order to force the app to trust our installed certificate, we can 
+    - patch its `network_security_config` file and make it trust the `user` certificates as the following example
+      ```xml copy filename="network_security_config"
+      <network-security-config>
+      <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+      </base-config>
+      </network-security-config>
+      ```
+      this can be done manually or by using [Android-CertKiller](https://github.com/51j0/Android-CertKiller)
+    - Use Magisk module to always trust user certificates [MagiskTrustUserCerts](https://github.com/NVISOsecurity/MagiskTrustUserCerts/releases)
+      From now on, any CA certificate that is installed by the user via "Settings", "Security & location", "Encryption & credentials", "Install from storage" (location may differ) is automatically pushed into the system's trust store by this Magisk module. Reboot and verify that the CA certificate is listed in "Settings", "Security & location", "Encryption & credentials", "Trusted credentials" (location may differ).
+- **NSC** can also be used for SSL Pinning [MASTG](https://mas.owasp.org/MASTG/0x05g-Testing-Network-Communication/#default-configurations)

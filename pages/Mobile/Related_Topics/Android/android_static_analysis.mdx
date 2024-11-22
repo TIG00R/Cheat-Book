@@ -1,0 +1,45 @@
+## Getting the Apk
+- [apkmirror](https://apkmirror.com)
+- [apkpure](https://apkpure.com)
+- `gplaycli` 
+    ```shell filename="Terminal" copy
+    gplaycli -p -v -d com.google.android.keep
+    ```
+- dump it from a device
+  - `adb`
+
+        ```shell filename="Terminal" copy
+        adb shell pm list // list packages
+        adb shell pm path <package name> // get path to the package 
+        adb pull <apk path> // dump the apk from the device
+        ``` 
+- [apk-extractor](https://www.github.com/Domilipment/apk-extractor)
+## Inspecting the package
+ - Decompile the apk
+    ```shell filename="Terminal" copy
+    apktool d app.apk
+    ```     
+- Inspecting the Native Libraries<br />
+those files end with `.so` extension and can be found under `/lib/` in the APK package after decompression.
+
+## Patching the APK
+- If we edited anything in the decompiled SMALI code and repackaged it again, that will corrupt the signature and we'll have to sign it again.
+### Patching a **React Application**
+- The application code will be found at `assets/index.android.bundle`
+- The code in this file is a minified JS code
+- To convert it to a human readable format we can use [JSTillery](https://github.com/mindedsecurity/JStillery)
+
+## Retrieving Strings
+Can be done by:
+- Decompiling with JADX-GUI or other tools and go to the `strings.xml` file
+- Open the `DEX` file in
+    - `ghidra`
+    - `Dexra`
+## Automative Static Analysis
+1. [mobsf](https://github.com/MobSF/Mobile-Security-Framework-MobSF)
+2. [apkleaks](https://github.com/dwisiswant0/apkleaks)
+    - copy the  apk file to this directory `/usr/share/jadx/bin/` first, Then run this command from its python venv
+    - run the command
+        ```shell
+            apkleaks -f base.apk
+        ```

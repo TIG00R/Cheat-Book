@@ -1,0 +1,14 @@
+### Online
+- https://hashkiller.io/listmanager
+- https://crackstation.net
+- http://cmd5.org
+
+### Offline
+
+```bash filename="Bash>" copy
+fcrackzip -D -p /usr/share/wordlists/rockyou.txt -u backup.zip
+unzip backup.zip
+
+john --wordlist=/usr/share/wordlists/rockyou.txt hash
+john --format=bcrypt --wordlist=/usr/share/wordlists/rockyou.txt hash
+```

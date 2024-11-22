@@ -1,0 +1,54 @@
+### Resources:
+    -  https://www.youtube.com/watch?v=USjZcfj8yxE
+    -  https://www.youtube.com/watch?v=Uszj_k0DGsg
+
+```bash filename="Bash >"
+# Git Commands
+============
+# Tracking the changes in the current Git repository
+git status
+
+# Adding files to the staging area (a middle area between changes and commits)
+git add index.txt
+git add index.html test.txt # multiple files
+git add . # add all changes in the current directory to the staging area
+
+# Committing the changes
+git commit -m "message describing the change you made"
+
+# Getting History of commits
+git log
+
+# Getting back to a previous commit
+git checkout commit_hash 
+
+
+## Branching
+# List branches, and will mark the current branch with an *
+git branch
+
+# Create a new branch
+git branch new-branch-name
+
+# move to another branch
+git checkout my-new-branch
+
+# rolling back to the branching point with a brach
+git checkout master
+
+# Merging a branch to our current branch
+# Supposing that we are on master branch, we want to merge the crazybranch to master...
+git merge crazybranch
+
+# Ignoring specific files or directories
+# add the file_name or directory_name followed by "/" to ignore it
+
+# To ignore a currently tracked file
+git rm --cached ./.vscode/settings.json
+
+
+# GitHub Commands
+===============
+# Pull changes from a remote repo
+git pull origin 
+```

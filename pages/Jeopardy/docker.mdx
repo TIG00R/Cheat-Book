@@ -1,0 +1,27 @@
+### Resources
+- https://www.youtube.com/watch?v=3c-iBn73dDE
+
+
+###  Commands 
+```bash
+docker pull image_name # downloads a docker image from dockerhub
+docker images # list docker application images on the disk
+docker run image_name # run application image in a **NEW** container (it will download it if its not on your filesystem)
+docker run redis:4.0 # run a specific version of an appication image
+docker run -d image_name # run application image in a container in a detached mode (it will output the container ID and detach it from the  current terminal session)
+docker run -pHOST_PORT:CONTAINER_PORT image_name # run and bind the container port with specific host port. EX docker run -p8000:3000 redis
+docker run redis:4.0 --name redis-container # assign a name to the container to be used instead of the container ID
+docker ps # list running containers
+docker ps -a # list all docker containers (running and stopped containers)
+docker stop container_id # stops the container (notice that you will only need the first 12 bytest of the container ID)
+docker start container_id # starts a stopped container
+docker logs container_id # outputs container logs for troublshooting
+docker exec -it CONTAINER_ID or CONTAINER_NAME /bin/bash # it stands for interactieve terminal, which will start a terminal inside the docker container.
+docker network ls # ls the docker networks
+docker network create mongo-network # will create a new network and name it mongo-network
+docker run mongo --name mongodb --network mongo-network # create a new container and make it a part of a specific docker network.
+```
+
+### Docker Escape
+- https://attackdefense.pentesteracademy.com/listingnoauth?labtype=container-security-container-host-security&subtype=container-security-container-host-security-breakouts
+- https://book.hacktricks.xyz/linux-hardening/privilege-escalation/docker-breakout/docker-breakout-privilege-escalation

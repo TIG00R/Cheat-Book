@@ -1,0 +1,21 @@
+
+- Port forwarding for adb port to 0.0.0.0 from powershell
+
+
+    ```powershell filename="Powershell >" 
+    # Get NoxVMHandle.exe PID
+    tasklist | select-string -pattern nox
+
+    # Get open ports under NoxVMHandle.exe process
+    netstat -aon | select-string -pattern 
+
+    # Port Forwarding for the adb port to be accessed from VM if wanted
+    netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=62001 connectaddress=127.0.0.1 connectport=62001
+    ```
+- ADB commands
+
+
+    ```powershell copy filename="Powershell >"
+    # List installed packages
+    adb shell pm list packages
+    ```
