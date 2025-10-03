@@ -1,0 +1,508 @@
+import { Tab, Tabs } from 'nextra-theme-docs'
+
+## Authentication & Authorization
+### Azure Access Concepts
+- There is nothing as direct user access to Azure (Entra ID or Resources). Only applications have access to Azure Entra ID and Resources.
+- If a user wants to interact with Azure Entra ID or Resources, He has to access through an application (ex: Azure Portal). and here the Azure portal website `portal.azure.com` is the application. When you open Outlook or Teams, Those are the applications.
+- **There are 2 types of Access in Azure**:
+    - **Application Access**:
+        The app acts by itself. There is no user present. This is used for background services, daemons, or automations that run on a server
+    - **Delegated Access**:
+        - An app acts with a user. There is always a signed-in user in the loop. It's used for interactive apps, like a PowerShell script you run on your machine or a web portal you log into.
+        - So, when you run `Connect-MgGraph -Scopes "User.Read.All"`, you are telling PowerShell: "I want to connect to Microsoft Graph. Please ask me, the user, to sign in and grant this script the delegated permission to read all user profiles on my behalf."
+
+### Authentication Flows
+#### Authorization Code Flow
+
+	1. **User Accesses App:** You navigate to a web application (e.g., the Azure Portal).
+	2. **Redirect to Azure AD:** The application redirects your browser to the Azure AD login page `login.microsoftonline.com`.
+	3. **User Authenticates:** You enter your username, password, and MFA.
+	4. **Authorization Code Granted:** After successful authentication, Azure AD redirects your browser back to the application with a short-lived, one-time-use **authorization code**.
+	5. **Token Exchange (Back-Channel):** The application's backend server takes this `authorization code` and securely sends it to Azure AD's `/token` endpoint, along with its own `client ID` and `secret`.
+	6. **Tokens Issued:** Azure AD validates the code and the client's credentials, then returns the **ID token**, **access token**, and **refresh token** to the application's backend.
+	7. **API Call:** The application now wants to list your VMs. It makes a call to the Azure Resource Manager (ARM) API and includes the **access token** in the `Authorization` header (as a "Bearer token").
+	8. **API Validation:** The ARM API receives the request, validates the signature and claims of the access token, confirms it has the required permissions, and then returns the list of VMs.
+	9. **Token Refresh:** An hour later, the access token expires. The application uses the **refresh token** to call the `/token`endpoint again and get a brand new access token without you, the user, noticing a thing.
+
+#### Client Credentials Flow
+    
+    - **Use Case:** Service-to-service communication. This is for applications (like a backend daemon, a script, or an API) that need to authenticate and get a token for themselves, with **no user present**.
+    - **How it Works:** The application authenticates directly with Azure AD using its own credentials—either a **client secret** (a password for the app) or a **client certificate**. It hits the `/token` endpoint directly and gets back an access token.
+    - **Red Team Angle:** This is a primary target. If you can find an application's client secret or certificate (in source code, configuration files, CI/CD variables, etc.), you can impersonate that application and gain all of its permissions.
+#### Device Code Grant Flow
+    
+    - **Use Case:** Devices with limited input, like smart TVs, IoT devices, or command-line interface (CLI) tools (the Azure CLI uses this).
+    - **How it Works:** 
+        1. An app that supports device code flow is started on the device and sends the application `client_id` and scope to the `/devicecode` endpoint.
+        2. The endpoint responds with a JSON object with `device_code`, `user_code` and `verification_uri` (https://microsoft.com/devicelogin) and a few more parameters.
+        3. The `user_code` and `verification_uri` are displayed to the user.
+        4. User browses to `verification_uri` on a computer or mobile, enters the user_code and completes the normal authentication process.
+        5. The device keeps polling the `/token` endpoint for `access_token` and `refresh_token` using the `device_code`.
+    - **Phishing Attack:** 
+        Device Code Flow can be abused for phishing as follows:
+        1. Connect to the `/devicecode` endpoint and use a legit `client_id` - client_id is a number that represents an Azure application. for instance Microsoft Office's client_id is "d3590ed6-52b3-4102-aeff-aad2292ab01c" -  and scope to generate a code.
+        2. Send the received `verification_uri` and `user_code` to the victim.
+        3. Hope that the victim opens the link, enters code and completes sign-in within 15 minutes.
+        4. Request access and refresh tokens for the victim.
+
+#### Implicit Grant Flow (Legacy)
+    
+    - **Use Case:** Originally designed for Single-Page Applications (SPAs) running entirely in the browser.
+    - **How it Works:** It's a simplified flow where the access token is returned directly in the URL fragment (`#access_token=...`) after the user authenticates.
+    - **Why it's Legacy:** Returning tokens in the URL is risky as they can be exposed in browser history or referrer headers. Modern SPAs should use the **Authorization Code Flow with PKCE** (Proof Key for Code Exchange), which is more secure. You'll still find older applications using this flow.
+#### On-Behalf-Of (OBO) Flow
+    
+    - **Use Case:** A web API needs to call another, downstream web API. For example, a user calls your custom "Employee API," which then needs to call the Microsoft Graph API to get more user details.
+    - **How it Works:** The "Employee API" takes the user's access token it received, sends it to the `/token` endpoint, and "exchanges" it for a _new_ access token that is valid for calling the downstream API (Microsoft Graph) on behalf of that original user.
+    - **Red Team Angle:** Understanding this is key to tracing permissions through complex microservice architectures. A compromise of a middle-tier API might allow you to pivot to other internal APIs.
+
+### JWT Assertion
+[Certificate-Credentials](https://learn.microsoft.com/en-us/entra/identity-platform/certificate-credentials)
+- We can authenticate directly with the certificate. but JWT assertion will happen automatically under the hood.
+- Its used whenever the application is authenticating as itself (not on behalf of a user).
+- The application creates a JWT token with required claims, then signs it with the private key of its certificate and sends it to the `/token` endpoint
+- Azure issues the required tokens after validating it.
+- Check if any application has a secret or a certificate
+    - Every application in Azure Entra can have a **secret** or a **certificate**
+    - They are stored on the application object in Azure entra under 2 properties:
+        - **passwordCredentials** → for client secrets.
+		- **keyCredentials** → for certificates (public certificates), each entry looks like 
+            ```powershell json filename="JSON" {2}
+            {
+            "customKeyIdentifier": "aGVsbG8td29ybGQ=",
+            "keyId": "12345678-aaaa-bbbb-cccc-1234567890ab",
+            "type": "AsymmetricX509Cert",
+            "usage": "Verify",
+            "key": "MIIDdzCCAl+gAwIBAgIEUzuwQTANBgkqhkiG9w0BAQsFADBoMQswCQYDVQQGEwJVUzELMAkGA1UE"
+            }
+            ```
+            and when the application creates the JWT Assertion and encrypt it with its private key, Azure validates it using this certificate.
+
+- Check if any application has a secret or a certificate.  Users who own / have access to those applications are only the ones who can see this data
+    ```powershell copy filename="Powershell"
+    $URI = "https://graph.microsoft.com/v1.0/Applications"
+
+    $RequestParams = @{
+    Method  = 'GET'
+    Uri     = $URI
+    Headers = @{
+        'Authorization' = "Bearer $GraphAccessToken"
+    }
+    }
+
+    $Applications = (Invoke-RestMethod @RequestParams).value
+
+    $ApplicationsDetails = [PSCustomObject]@{
+    Applications = @()
+    }
+
+    foreach ($Application in $Applications) {
+    $applicationObject = [PSCustomObject]@{
+        DisplayName        = $Application.displayName
+        AppId              = $Application.appId
+        CreatedDateTime    = $Application.createdDateTime
+        ID                 = $Application.id
+        keyCredentials     = $Application.keyCredentials
+        passwordCredentials = $Application.passwordCredentials
+    }
+
+    $ApplicationsDetails.Applications += $applicationObject
+    }
+
+    $ApplicationsDetails.Applications
+
+    # Save output to a file for later use
+    $ApplicationsDetails.Applications | Export-Clixml -Path ApplicationsWithCertificates.xml 
+    ```
+- Get what application is using this certificate by comparing the **Certificate ThumpPrint** in the `customKeyIdentifier` field with the actual **pfx** certificate's **ThumpPrint**
+```powershell copy filename="Powershell"
+Import-Clixml ApplicationsWithCertificates.xml | Where {$_.keyCredentials.customKeyIdentifier -eq $clientCertificate.Thumbprint}
+```
+## Consent Permissions
+- Users can consent for apps to access resources on their bahalf.
+- Consent permissions for users in a tenant can be controlled by the admin, options are:
+    - Don't allow user consent
+    - Allow user consent for trusted publishers.
+    - Allow user consent for all apps.
+## Applications & Service Principals & Managed Identities 
+**References**:
+[Applications and service principal objects in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/app-objects-and-service-principals?tabs=browser)
+[Use Service Principals and Managed Identities in Azure Dev Ops](https://learn.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/service-principal-managed-identity?view=azure-devops)
+
+### Application Objects
+- A **Microsoft Entra application** is defined by its one and only application object, which resides in the Microsoft Entra tenant where the application was registered (known as the application's **home** tenant).
+- Think of the **Application** as a blue print / a class to an object in OOP / a docker image to docker instances.
+-  A **service principal object**  for the application is created in every tenant the **application** is used in.
+- **Relationship between application object and a service principal**:
+	- The **application object** is the **global** representation of your application for use across all tenants, and the service principal is the **local** representation for use in a specific tenant.
+	- The **application object** serves as the template from which common and default properties are _derived_ for use in creating corresponding service principal objects.
+### Managed Identities
+Types of identities:
+- Human
+- Non-Human Identities:
+	- Device Identities
+	- Workload Identities:
+		- Application Identities
+		- Service Principals
+		- Managed Identities
+- A **managed identity** is an identity that can be assigned to an Azure compute resource (Azure Virtual Machine, Azure Kuerbernetes cluster set, .. etc).
+- Once a **managed identity** is assigned on the **compute resource**, it can be authorized, directly or indirectly, to access resources, such as a storage account, SQL database, .. etc.
+- **Managed identity** replaces secrets such as access keys, passwords, certificates or other forms of authentication for service-to-service dependencies.
+
+Types of **Managed Identities**:
+- **System-assigned**:
+	- Some Azure resources, such as virtual machines allow you to enable a managed identity directly on the resource. **When you enable a system-assigned managed identity**:
+    - A service principal of a special type is created in Microsoft Entra ID for the identity. The service principal is tied to the lifecycle of that Azure resource. When the Azure resource is deleted, Azure automatically deletes the service principal for you.
+    - By design, only that Azure resource can use this identity to request tokens from Microsoft Entra ID.
+    - You authorize the managed identity to have access to one or more services.
+    - The name of the system-assigned service principal is always the same as the name of the Azure resource it's created for. For a deployment slot, the name of its system-assigned managed identity is `<app-name>/slots/<slot-name>`.
+- **User-assigned**:
+	- You may also create a managed identity as a standalone Azure resource. You can create a user-assigned managed identity and assign it to one or more Azure Resources. When you enable a user-assigned managed identity:
+    - A service principal of a special type is created in Microsoft Entra ID for the identity. The service principal is managed separately from the resources that use it.
+    - User-assigned managed identities can be used by multiple resources.
+    - You authorize the managed identity to have access to one or more services. 
+- **User-assigned managed identities**, which are provisioned independently from compute and can be assigned to multiple compute resources, are the recommended managed identity type for Microsoft services.
+### Service Principals
+- To access resources that are secured by a Microsoft Entra tenant, the entity that requires access must be represented by a **security principal**.
+- The **security principal** defines the access policy and permissions for the user/application in the Microsoft Entra tenant.
+- The **security principal** of a user is called **user principal** and for an application is called **service principal**.
+- This enables core features such as authentication of the user/application during sign-in, and authorization during resource access.
+- There are 3 types of service principals depending on what it represents:
+	- **Application**:
+		- This type of service principal is the local representation, or application instance, of a global application object in a single tenant or directory. In this case, a service principal is a concrete instance created from the application object
+		- A service principal is created in each tenant where the application is used and references the globally unique app object.
+		- The service principal object defines what the app can actually do in the specific tenant, who can access the app, and what resources the app can access.
+		- When an application is given permission to access resources in a tenant (upon registration or consent), a service principal object is created. When you register an application, a service principal is created automatically.
+    
+	- **Managed identity** 
+		- This type of service principal is used to represent a [managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview). 
+		- Managed identities eliminate the need for developers to manage credentials. Managed identities provide an identity for applications to use when connecting to resources that support Microsoft Entra authentication. 
+		- When a managed identity is enabled for an Azure resource, a service principal representing that managed identity is automatically created in your tenant and is tied to that resource life time.
+		- A service principal representing a managed identity doesn't have an associated app object (unlike the Application type above).
+	- **Legacy** 
+		- This type of service principal represents a legacy app, which is an app created before app registrations were introduced.
+		- A legacy service principal can have credentials, service principal names, reply URLs, and other properties that an authorized user can edit, but doesn't have an associated app registration. 
+## Azure Roles RBAC and ABAC 
+### RBAC 
+- Azure has more than `120` built in roles
+- The most important 4 are:
+
+| **Role**                  | **Permissions**                                                           | **Applies to**     |
+| ------------------------- | ------------------------------------------------------------------------- | ------------------ |
+| **Owner**                     | - Full Access to all resources<br />- Can manage access for other users<br /> | All resource types |
+| **Contributor**               | - Full access to all resources<br />- Cannot manage access                  | All resource types |
+| **Reader**                    | - View all resources                                                      | All resource types |
+| U**ser Access Administrator** | - View all resources<br />- Can manage access for other users               | All resource       |
+
+### RBAC roles Assignment
+- `Azure AD Object/Principal` HAS `Role` ON `Resource/Resources`
+- An explicit deny role assignment takes precedence!.
+
+### ABAC
+- **ABAC** = **Attribute-Based Access Control**.
+- It extends **RBAC** (role-based access control) by adding **conditions based on attributes** instead of only static role assignments.
+- **RBAC alone**: “User X is a Storage Blob Data Reader on Storage Account Y.”
+- **RBAC + ABAC (with conditions)**: “User X is a Storage Blob Data Reader on Storage Account Y **but only if** blob.IndexTag = 'ProjectA' and user.department = 'Finance'.”
+## Azure AD Roles
+- Azure AD roles are on the level of the Azure AD/Entra ID. And its different than the Azure Roles which are on the level of the Azure tenant itself.
+- The role `Global Administrator` is the highest **Azure Ad role** and can `elevate` to the `User Access Administrator` **Azure role** to the **Root Management Group**
+
+## Azure Resources 
+### Azure AD
+- Azure AD is NOT directory services in the cloud. That one is Azure Active Directory Domain Services which provides 'domain controller as a service'.
+- It is possible to integrate on prem AD with Azure AD for a hybrid identity.
+- Global Administration can elevate their privileges to the Root Management Group.
+- Azure AD roles are applicable on Azure AD resources like users, groups, domains, licenses etc.
+- There are many Administrator roles in Azure AD. We can also define custom roles.
+### ARM Azure Resource Management
+- **ARM** or Azure Resource Manager: is used to manage azure resources
+- We can write ARM templates (is like terraform scripts) for managing azure resources.
+- 2 planes to communicate with Azure resources:
+
+    **Control Plan:**
+
+        - Only needs an access token for ARM `management.azure.com`
+        - Is used to create/update/delete resources (Ex: Crete a new keyvault)
+
+    **Data Plane:**
+
+        - Needs 2 tokens, one for **ARM** and one specific for the service itself (Ex: keyvault)
+        - Is used to interact with the resource itself (Ex: Retrieve secrets from the keyvault)
+- [Enumerating Azure Resources](azure-cheat-sheet)
+### Azure App Service
+- Azure App Service is a platform that lets you run web applications, mobile back ends, and RESTful APIs without worrying about managing the underlying infrastructure. 
+- Supports multiple dev stacks (Node js, .NET, ... etc) also if you hve your app containerized you can just run your container.
+- Apps are susciptible to normal web app vulnerabilities.
+- If the app is vulnerable to an RCE, the privs we will get will be only the low-priv worker process.
+- Unless the app was assigned a **Managed Identity** then we can use that inside the Azure env.
+- Managed identity authentication happens through 2 important ENV Variables 
+	- `IDENTITY_ENDPOINT`: represents the local endpoint (like the metadata endpint in aws env), Ex: ('http://172.16.1.5:8081/msi/token/') 
+	- `IDENTITY_HEADER`: specifies the header used for authentication during this interaction.
+- Retrieve the token by senging a `GET` request 
+    ```powershell copy filename="Powershell"
+    curl "$IDENTITY_ENDPOINT?resource=https://management.azure.com&api-version=2017-09-01" -H secret:$IDENTITY_HEADER'
+    ```
+    
+    if they exist in the ENV of a Azure service app. then it has an attached managed identity.
+### Storage Account 
+- Also called **Azure Blob Storage**
+- **Structure**: Storage Account (Uniqe accross the tenant ) > containers (folders) > blobs (files)
+- **Authorization** for it can be done through:
+    - **RBAC**
+    - **Shared Key**: use access keys of the storage account. Grants full access to the storage account 
+    - **SAS** URLs shared access signature: is time limited and grants specific permissions (Same like the signed URLs in AWS for S3 buckets)
+### Automation Account
+- Allows automating tasks for azure resources, on-prem and other cloud providers (ex: creating VMs)
+- It must be assigned a **Managed Identity** with high privs in order to do its work
+- It uses **Runbooks** which contains automation logic, (Ex: can be Powershell, Python, .. ).
+- Always checkout Runbooks! They often have credentials that are not stored in the shared resources.
+## Tokens
+### Token Types
+
+- Azure AD uses tokens based on open standards (OAuth 2.0 and OpenID Connect). These tokens are typically **JSON Web Tokens (JWTs)**, which are specially formatted, signed strings of text that you can decode to see the information inside.
+
+- The most common azure api for issuing tokens is `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/{endpint}`
+    ```powershell copy filename="Powershell"
+    https://login.microsoftonline.com/12345678-1234-1234-1234-1234567890ab/oauth2/v2.0/authorize
+    ```
+        
+    ```powershell copy filename="Powershell"
+    https://login.microsoftonline.com/12345678-1234-1234-1234-1234567890ab/oauth2/v2.0/token
+    ```
+#### ID Tokens (Authentication)
+
+- **Purpose:** To prove the identity of the user. It's the output of the authentication process.
+- **Issued By:** Azure AD's `/authorize` endpoint.
+- **Consumed By:** The application the user is logging into (the "client").
+- **Key Contents (Claims):** Information about the user, such as their name (`name`), username (`upn`), tenant ID (`tid`), and the time the token was issued. It answers the question, "**Who are you?**"
+- **Red Team Note:** An ID token is useful for reconnaissance on a user's identity, but it can't be used to access APIs directly.
+
+#### Refresh Tokens (Persistence)
+- When you use the refresh token, you are stepping into the shoes of that specific application, and you can only operate within the boundaries of the permissions the user granted to that application in the first place. 
+- **Bound To**:
+    - Subject (sub): The user who authenticated.
+    - Client (client_id): The application that requested the token on behalf of the user.
+- **Purpose:** To obtain new access tokens (and sometimes new ID tokens) without requiring the user to log in again.
+- **Issued By:** Azure AD's `/token` endpoint, alongside the access token.
+- **Consumed By:** The client application, which sends it back to Azure AD to refresh the session.
+- **Key Contents:** Opaque to the client. It's an encrypted string only meant for Azure AD to understand.
+- **Revoked** When the user resets their password, or manually revokes all active sessions
+- **Red Team Note:** **This is the crown jewel.** A refresh token is extremely powerful. They are long-lived (can be valid for days or even indefinitely until revoked). If you steal a refresh token, you can maintain persistent access to the user's account, silently generating new access tokens whenever you need them.
+- **FRT** and **FOCI**
+    - **FOCI**: 
+        - Family of client IDs. are a group of applications in Azure that a single access or refresh token can work for all of them.
+        - Currently, there is only one family and it contains many "First-Party" Microsoft Applications with "public" client IDs - Office, Teams, Az CLI, Az PowerShell, Microsoft support, OneDrive and so on!
+    - **FRT**:
+        - Family Refresh Token is not bound to a `client_id` or a `scope`
+        - Even using a normal refresh token, we can request access token for different scopes. For example, using a MSGraph refresh token to request an access token for ARM.
+#### Access Tokens (Authorization)
+ **Purpose:** To grant access to a protected resource (an API like Microsoft Graph, the ARM API, or your own custom API).
+- **Issued By:** Azure AD's `/token` endpoint.
+- **Consumed By:** The protected resource/API. The API inspects the token to ensure it's valid and that the bearer has the necessary permissions.
+- **Key Contents (Claims):** 
+    - **Subject (sub)**: Binds the token to the user who is acting.
+    - **Audience (aud)**: Binds the token to the resource or API it is meant for. An access token with an audience of https://graph.microsoft.com will be immediately rejected by the Azure Resource Manager (ARM) API, which expects an audience of https://management.azure.com/.
+        ```json {2, 18, 13-16} showLineNumbers copy filename="JSON"
+        {
+        "aud": "https://graph.microsoft.com",
+        "iss": "https://sts.windows.net/12345678-1234-1234-1234-1234567890ab/",
+        "iat": 1727493234,
+        "nbf": 1727493234,
+        "exp": 1727497134,
+        "aio": "E2ZgYhhfW7IRC_tjC0t1gAsJztgEA",
+        "appid": "f12cd596-07c4-4054-b5f7-013b632903ab",
+        "appidacr": "1",
+        "idp": "https://sts.windows.net/12345678-1234-1234-1234-1234567890ab/",
+        "oid": "11111111-1111-1111-1111-111111111111",
+        "rh": "0.ASEAQky8ENcvz_IL1MASRmvSBgYAAAAAAAAwAAAAAAAAFA4QAA.",
+        "roles": [
+            "User.Read.All",
+            "Directory.Read.All"
+        ],
+        "tid": "12345678-1234-1234-1234-1234567890ab",
+        "sub": "11111111-1111-1111-1111-111111111111",
+        "uti": "FQ80ixno0UiQgnXsSD3AAA",
+        "ver": "1.0"
+        }
+            ```
+    - **Scope (scp) or roles**: Defines what specific permissions the user has for that audience (e.g., Mail.Read, User.ReadWrite.All).
+- **Red Team Note:** 
+An access token is a receipt, issued only after a user has passed all security checks like MFA and Conditional Access. The token contains claims that certify these checks were met. allowing us to bypass those security measures.
+### Red Teamer's POV: Stealing and Abusing Tokens
+
+Your goal as a red teamer is to short-circuit this process by stealing the tokens after they've been issued.
+
+#### Where to Find Tokens
+    - **Browser Storage:** `localStorage` and `sessionStorage`.
+    - **Configuration Files:** Web server configs, CI/CD pipeline variables, developer source code.
+    - **PowerShell History:** `Get-History` or the history file on disk.
+    - **Process Memory:** Can be difficult but possible.
+    - **Man-in-the-Middle (MitM):** Intercepting unencrypted traffic (less common now with TLS everywhere, but possible in misconfigured environments).
+##### Stealing az cli tokens
+	- **az cli** stores tokens in clear-text format  in `C:\\[UserName]\.Azure\accessTokens.json`
+	- We can read tokens from the file, use them and request new ones too!
+	- `azureProfile.json` in the same directory contains information about subscriptions.
+	- You can modify accessTokens.json to use access tokens with az cli but better to use with Az PowerShell or the Azure AD module.
+	- Always use `az logout` to clear the tokens.
+##### Stealing Az Powershell tokens
+	- It stores tokens in clear-text format in `C:\\[UserName\.Azure\TokenCache.dat]`
+	- It stores **serviceprincipalsecret** in `AzureRmContext.json` if a service principal secret is used to authenticate.
+	- Another interesting method is to take a process dump of PowerShell and looking for tokens in it!
+	- Users can save tokens using `Save-AzContext`, So, we should look for them in powershell history
+	- Always use `Disconnect-AZ-Account`
+#### Use Stolen Tokens
+    - **Access Token Replay:** You can use a stolen access token with tools like the Azure CLI, PowerShell, or `curl` to directly make API calls as if you were the user.
+    - **Refresh Token Abuse:** This is more advanced. You can use a stolen refresh token to generate your own access tokens, giving you persistent access. Tools like **AADInternals** have functions specifically for this (`Get-AADIAccessTokenForRefreshToken`).
+
+Let's make this practical. If you are on a compromised machine and have the Azure CLI installed and a user is logged in, you can easily grab an access token for the ARM API:
+```powershell copy filename="Powershell"
+# Get an access token for the currently logged-in user
+$token = az account get-access-token --resource https://management.azure.com --query accessToken --output tsv
+
+# Now use that token to list all resource groups in the subscription
+curl -X GET -H "Authorization: Bearer $token" "https://management.azure.com/subscriptions/{subscription-id}/resourcegroups?api-version=2021-04-01"
+```
+##### Using Tokens with CLI Tools
+- Usually, tokens contain all the claims (including that for MFA and Conditional Access etc.) so they are useful in bypassing such security controls.
+[Token Commands](azure-cheat-sheet)
+
+
+
+##### Using tokens with APIs 
+The two REST APIs endpoints that are most widely used are:
+###### MG API
+- Microsoft Graph API a single API endpiont `graph.microsoft.com` and the deprecated one is `graph.windows.net`
+- Provides access to:
+    - Entra ID
+    - Microsoft 365 core services - Office, OneDrive, Outlook/Exchange, Teams and more.
+    - Enterprise Mobility + Security Services - Entra ID, Intune, Defender 365 etc.
+    - Windows services - Activities, devices, notifications etc.
+    - Dynamics 365 Business Central services - ERP services
+- Ex:
+    ```powershell copy filename="Powershell"
+    # List all users
+
+    $Token='eyJ0eXAi..'
+    $URI='https://graph.microsoft.com/v1.0/users'
+    $RequestParams=@{
+    Method ='GET'
+    Uri =$URI
+    Headers =@{
+        'Authorization'="Bearer $Token"
+        }
+    }
+    (Invoke-RestMethod@RequestParams).value
+    ```
+###### ARM API
+- Azure Resource Management API
+- `management.azure.com`
+- Enables developers to manage Azure resources programmatically.
+- This API allows for tasks such as creating and managing virtual machines, managing storage accounts, configuring networking resources, and monitoring Azure services.
+- Ex
+    ```powershell copy filename="Powershell"
+    # List all subscriptions
+    $Token='eyJ0eXAi..'
+
+    $URI='https://management.azure.com/subscriptions?api-version=2020-01-01'
+    $RequestParams=@{
+    Method ='GET'
+    Uri =$URI
+    Headers =@{
+        'Authorization'="Bearer $Token"
+        }
+    }
+    (Invoke-RestMethod@RequestParams).value
+    ```
+## Azure security
+### Conditional Access Policy
+### CAE
+- **What is Azure CAE?**  
+  - Azure Continuous Access Evaluation (CAE) is a modern security feature in Microsoft Entra ID.  
+  - Replaces the traditional, fixed-lifetime access **1 hour** token model with an **event-driven system**.  
+  - Goal: Provide **near real-time enforcement** of security policies and react instantly to changes in a user's security state.  
+
+- **How It Works: The Shift to Continuous Verification**  
+  - Instead of trusting an access token for 60 minutes, CAE establishes a continuous subscription model between:  
+    - **Identity provider** (Microsoft Entra ID)  
+    - **Resource provider** (e.g., SharePoint Online, Microsoft Teams)  
+  - Flow:  
+    - User logs in and gets an access token.  
+    - Service subscribes to critical events in Microsoft Entra ID.  
+    - Entra ID publishes events if they occur.  
+    - Service rejects the current token, even if not expired.  
+    - User re-authenticates and policies are re-evaluated.  
+
+- The client (app, cli, .. ) must be CAE aware. (to understand that **the access token is not expired, but still not usable**) The claim `xms_cc` in the access token can show you if the applicatin it was issued for is CAE available, If it has a value of `CP1` its CAE aware
+- **The Triggers: When is Access Re-Evaluated?**  
+
+  - **Scenario 1: Critical Security Events**  
+    - **User Account Disabled or Deleted** → Access revoked immediately.  
+    - **Password Changed or Reset** → Sessions invalidated; user must sign in again.  
+    - **MFA Enabled** → Forces re-evaluation to ensure MFA can be satisfied.  
+    - **Administrator Revokes Tokens** → Enforced almost instantly via CAE.  
+    - **High User Risk Detected** → Risky behavior triggers termination of session.  
+
+  - **Scenario 2: Conditional Access Policy Changes**  
+    - Example: **Location Change**  
+      - Conditional Access allows access from trusted corporate network.  
+      - User logs in from office (trusted) and begins working.  
+      - User moves to a coffee shop (untrusted public Wi-Fi).  
+      - CAE detects IP change and invalidates token.  
+      - Conditional Access re-evaluated → prompts MFA.  
+### Azure Security Solutions
+[Microsoft Introduction to Azure Security](https://learn.microsoft.com/en-us/azure/security/fundamentals/overview)
+
+The built-in capabilities are organized in six functional areas:
+
+- **Identity**
+
+    Focuses on securing identities, which is the control plane for accessing resources. This includes:
+
+    - **Microsoft Entra ID** for authentication and authorization.
+    - **Multi-Factor Authentication (MFA)**.
+    - **Role-Based Access Control (RBAC)**.
+    - **Continuous Access Evaluation (CAE)** for real-time policy enforcement.
+    - **Microsoft Entra ID Protection** for detecting and responding to threats like compromised accounts.
+
+- **Compute**
+
+    Protects the virtual machines (VMs), containers, and other computing resources you use. Key capabilities include:
+    - **Microsoft Defender for Cloud** for antimalware and antivirus solutions.
+    - **Azure Disk Encryption** for data at rest.
+    - **Secure Boot** and **integrity monitoring** to protect the host environment.
+
+- **Networking**
+
+    Secures your network and the connections between your resources. This area includes:
+    - **Network Security Groups (NSGs)** for filtering network traffic.
+    - **Azure Firewall** to protect virtual networks.
+    - **Azure DDoS Protection** to defend against distributed denial-of-service attacks.
+    - **Web Application Firewall (WAF)** to protect web applications.
+    - **Azure VPN Gateway** and **ExpressRoute** for secure hybrid connectivity.
+
+- **Storage**
+
+    Deals with securing data stored in Azure. Capabilities include:
+
+    - **Azure Storage Service Encryption** for data at rest and in transit.
+    - **Azure Key Vault** to securely manage cryptographic keys and secrets.
+    - **Role-Based Access Control (RBAC)** to control access.
+    - **Shared Access Signatures (SAS)** for granting granular, time-limited access.
+
+- **Applications**
+
+    Focuses on securing the applications you build and deploy. This involves:
+
+    - **Secure development practices**.
+    - **Azure API Management** for API security.
+    - **Azure Application Gateway** to protect web apps.
+    - **Managed Identities** for secure application-to-resource authentication without credentials.
+
+- **Operations**
+
+    Encompasses the security practices and tools used to manage and monitor your Azure environment. Key features include:
+
+    - **Microsoft Defender for Cloud**, a unified security management and threat protection platform.
+    - **Microsoft Sentinel**, a cloud-native SIEM and SOAR solution.
+    - **Azure Policy** to enforce organizational standards and assess compliance.
+    - **Azure Monitor** for collecting, analyzing, and acting on telemetry data.

